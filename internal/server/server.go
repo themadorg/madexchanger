@@ -393,7 +393,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"status":"ok","received":%d,"forwarded":%d,"errors":%d,"relay_mode":"%s"}`,
+	_, _ = fmt.Fprintf(w, `{"status":"ok","received":%d,"forwarded":%d,"errors":%d,"relay_mode":"%s"}`,
 		s.received.Load(), s.forwarded.Load(), s.errors.Load(), s.cfg.RelayMode)
 }
 
@@ -481,7 +481,7 @@ func (s *Server) serveAdminWeb(prefix string) http.HandlerFunc {
 			_, _ = w.Write(patchedIndexBytes)
 			return
 		}
-		f.Close()
+		_ = f.Close()
 
 		// Check if it's a directory.
 		stat, err := fs.Stat(adminFS, path)

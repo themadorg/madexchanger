@@ -57,7 +57,7 @@ func newTestServer(t *testing.T) (*Server, *httptest.Server) {
 	if err != nil {
 		t.Fatalf("db.Open() error: %v", err)
 	}
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
 	log := logger.New(cfg.LogLevel)
 	fwd := forwarder.New(cfg.DownstreamURL, cfg.ForwardTimeout, cfg.SkipTLSVerify, "", log)
@@ -216,7 +216,7 @@ func TestHandleReceiveDownstreamFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("db.Open() error: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	log := logger.New(cfg.LogLevel)
 	fwd := forwarder.New(cfg.DownstreamURL, cfg.ForwardTimeout, cfg.SkipTLSVerify, "", log)
