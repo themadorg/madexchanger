@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/themadorg/madexchanger/compare/v1.0.0...v1.0.1) (2026-03-07)
+
+
+### Bug Fixes
+
+* **ci:** downgrade Go to 1.24.0 for golangci-lint compatibility ([b139a29](https://github.com/themadorg/madexchanger/commit/b139a293011c55ce94ea04d457487b55ff61fc76))
+
 # 1.0.0 (2026-03-07)
 
 
