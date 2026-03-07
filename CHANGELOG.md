@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/themadorg/madexchanger/compare/v1.0.2...v1.0.3) (2026-03-07)
+
+
+### Bug Fixes
+
+* **ci:** downgrade x/net to v0.50.0 for Go 1.24 compat ([34c5856](https://github.com/themadorg/madexchanger/commit/34c5856f4f64651992cc7d32e0e78f0b0f3e5870))
+
 ## [1.0.2](https://github.com/themadorg/madexchanger/compare/v1.0.1...v1.0.2) (2026-03-07)
 
 
