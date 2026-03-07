@@ -1,0 +1,137 @@
+name: "CI Pipeline"
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  packages: write
+  id-token: write
+  checks: write
+
+jobs:
+  semantic-release:
+    name: Semantic Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
+
+  lint-and-build:
+    name: Lint and Build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.0'
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build admin-web SPA
+        run: |
+          cd admin-web
+          npm ci
+          npm run build
+      - name: Stage admin-web for embed
+        run: make stage-admin-web
+      - name: Go fmt check
+        run: |
+          gofmt -l .
+          test -z "$(gofmt -l .)"
+      - name: Go vet
+        run: go vet ./...
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.8
+          args: --timeout=10m
+      - name: Run tests
+        run: CGO_ENABLED=1 go test -race -v ./...
+      - name: Build binary
+        run: CGO_ENABLED=1 go build -o madexchanger ./cmd/madexchanger
+      - name: Smoke test
+        run: ./madexchanger --help || true
+
+  static-build:
+    name: Static Build (linux-amd64)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.0'
+          cache: true
+      - name: Create admin-web placeholder for embed
+        run: |
+          mkdir -p internal/adminweb/build
+          echo "placeholder" > internal/adminweb/build/placeholder
+      - name: Build static binary
+        run: |
+          CGO_ENABLED=0 go build \
+            -ldflags "-s -w -extldflags '-static'" \
+            -o madexchanger-linux-amd64 \
+            ./cmd/madexchanger
+      - name: Verify binary is static
+        run: |
+          echo "🔍 Checking binary linkage..."
+          file madexchanger-linux-amd64
+          if ldd madexchanger-linux-amd64 2>&1 | grep -q "not a dynamic executable"; then
+            echo "✅ Binary is statically linked"
+          else
+            echo "❌ Binary is dynamically linked!"
+            ldd madexchanger-linux-amd64
+            exit 1
+          fi
+      - name: Smoke test binary
+        run: ./madexchanger-linux-amd64 --help || true
+      - name: Upload binary artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: madexchanger-linux-amd64
+          path: madexchanger-linux-amd64
+          retention-days: 30
+
+  build-summary:
+    needs: [lint-and-build, static-build]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Generate Build Summary
+        run: |
+          echo "## 🚀 Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow:** ${{ github.workflow }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Run ID:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ Build Status" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint & Build | ${{ needs.lint-and-build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Static Build | ${{ needs.static-build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔗 Links" >> $GITHUB_STEP_SUMMARY
+          echo "- [Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+          echo "- [Repository](${{ github.server_url }}/${{ github.repository }})" >> $GITHUB_STEP_SUMMARY
