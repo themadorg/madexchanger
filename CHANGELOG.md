@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/themadorg/madexchanger/compare/v1.0.1...v1.0.2) (2026-03-07)
+
+
+### Bug Fixes
+
+* **ci:** pin Go version to 1.24 for golangci-lint compatibility ([a2e0738](https://github.com/themadorg/madexchanger/commit/a2e073853c141a0311afddd701f2696b88e223aa))
+
 ## [1.0.1](https://github.com/themadorg/madexchanger/compare/v1.0.0...v1.0.1) (2026-03-07)
 
 
