@@ -1,0 +1,80 @@
+## ============================================================================
+## Madexchanger — Configuration
+## ============================================================================
+##
+## Madexchanger is an email relay proxy (exchanger) for the Madmail ecosystem.
+##
+## How it works:
+##
+##   1. Madmail at 1.1.1.1 is configured: when a user sends an email to
+##      someone at 2.2.2.2, it sends to the exchanger instead of directly.
+##
+##   2. Madexchanger receives the HTTP POST on /mxdeliv with headers:
+##        X-Mail-From: a@1.1.1.1
+##        X-Mail-To: b@2.2.2.2
+##
+##   3. Madexchanger extracts the recipient domain (2.2.2.2) and tries:
+##        → https://2.2.2.2/mxdeliv
+##        → http://2.2.2.2/mxdeliv  (fallback if HTTPS fails)
+##
+##   4. Optionally, a proxy (HTTP/SOCKS5) can be used for outbound connections
+##      and rewrite rules can modify the envelope before forwarding.
+##
+## Copy this file to config.yml and adjust as needed.
+
+## ─── Listen Configuration ───
+listen: "0.0.0.0:8443"
+
+## ─── Receive Path ───
+## The HTTP path where inbound emails arrive.
+receive_path: "/mxdeliv"
+
+## ─── TLS Configuration (optional) ───
+## When both are set, the server listens on HTTPS.
+tls:
+  cert_file: ""
+  key_file: ""
+
+## ─── Routing ───
+## By default (dynamic mode), the exchanger looks at each recipient's domain
+## and delivers to https://<domain>/mxdeliv (HTTPS first, HTTP fallback).
+##
+## If downstream_url is set, ALL messages go to that fixed URL instead.
+## Useful for chaining exchangers or testing.
+##
+## Examples:
+##   downstream_url: ""                            → dynamic (default)
+##   downstream_url: "https://other-exchanger.com" → fixed relay
+downstream_url: ""
+
+## ─── Forward Timeout ───
+forward_timeout: 30
+
+## ─── TLS Verification ───
+## Skip verification for self-signed certs on destination servers.
+skip_tls_verify: true
+
+## ─── Outbound Proxy (optional) ───
+## Route outbound connections through a proxy.
+## Supported: socks5://, http://, https://
+proxy:
+  url: ""
+
+## ─── Request Size Limit ───
+max_body_size: 33554432
+
+## ─── Relay Mode ───
+## "all" — forward everything  |  "selected" — only matching filter rules
+relay_mode: "all"
+
+## ─── Database ───
+database_path: "madexchanger.db"
+
+## ─── Logging ───
+log_level: "info"
+
+## ─── Admin Web Dashboard ───
+admin_web:
+  enabled: true
+  path: "/admin"
+  token: "change-me-to-a-random-token"

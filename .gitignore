@@ -1,0 +1,42 @@
+# Binaries
+/madexchanger
+/madexchanger-linux-amd64
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of go coverage
+*.out
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Runtime config (keep example only)
+config.yml
+!config.yml.example
+
+# TLS certs
+*.pem
+*.key
+*.crt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go workspace
+vendor/
