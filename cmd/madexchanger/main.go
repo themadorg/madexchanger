@@ -96,7 +96,7 @@ func main() {
 		log.Error("failed to open database", "err", err)
 		os.Exit(1)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	log.Info("database opened", "path", cfg.DatabasePath)
 

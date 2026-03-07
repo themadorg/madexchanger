@@ -243,7 +243,7 @@ func (f *Forwarder) post(targetURL, mailFrom string, mailTo []string, body []byt
 	if err != nil {
 		return fmt.Errorf("forwarder: request to %s failed: %w", targetURL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Drain the response body to allow connection reuse.
 	_, _ = io.Copy(io.Discard, resp.Body)

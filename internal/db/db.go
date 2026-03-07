@@ -230,7 +230,7 @@ func (d *DB) ListRoutes() ([]Route, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var routes []Route
 	for rows.Next() {
@@ -256,7 +256,7 @@ func (d *DB) ListRewriteRules() ([]RewriteRule, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var rules []RewriteRule
 	for rows.Next() {
@@ -323,7 +323,7 @@ func (d *DB) ListRelayFilters() ([]RelayFilter, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var filters []RelayFilter
 	for rows.Next() {

@@ -41,7 +41,7 @@ func setupHandler(t *testing.T) *Handler {
 	if err != nil {
 		t.Fatalf("db.Open() error: %v", err)
 	}
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
 	cfg := &config.Config{
 		RelayMode:     "all",
