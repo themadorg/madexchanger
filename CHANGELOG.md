@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/themadorg/madexchanger/compare/v1.0.3...v1.0.4) (2026-03-07)
+
+
+### Bug Fixes
+
+* resolve errcheck lint warnings ([a7c7ac4](https://github.com/themadorg/madexchanger/commit/a7c7ac475b6edf8d6f15ebbfc1a265a40efceae1))
+
 ## [1.0.3](https://github.com/themadorg/madexchanger/compare/v1.0.2...v1.0.3) (2026-03-07)
 
 
