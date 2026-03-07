@@ -71,6 +71,13 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Check for subcommands (proxy, proxy-route).
+	args := flag.Args()
+	if len(args) > 0 {
+		runSubcommand(*configPath, args)
+		return
+	}
+
 	// Load and validate configuration.
 	cfg, err := config.Load(*configPath)
 	if err != nil {
@@ -109,6 +116,9 @@ func main() {
 		log,
 	)
 
+	// Wire up DB-based proxy resolution for per-destination routing.
+	fwd.SetProxyResolver(&dbProxyResolver{store: store, log: log})
+
 	// Initialize and start the inbound server.
 	srv := server.New(cfg, fwd, store, log)
 
@@ -145,4 +155,24 @@ func routingMode(cfg *config.Config) string {
 		return "static → " + cfg.DownstreamURL + config.DeliveryPath
 	}
 	return "dynamic → https://<recipient-domain>" + config.DeliveryPath
+}
+
+// dbProxyResolver adapts db.DB to forwarder.ProxyResolver.
+type dbProxyResolver struct {
+	store *db.DB
+	log   *logger.Logger
+}
+
+func (r *dbProxyResolver) ResolveProxy(destination string) (*forwarder.ProxyInfo, error) {
+	p, err := r.store.ResolveProxy(destination)
+	if err != nil || p == nil {
+		return nil, err
+	}
+	return &forwarder.ProxyInfo{
+		Type:     p.Type,
+		Host:     p.Host,
+		Username: p.Username,
+		Password: p.Password,
+		Name:     p.Name,
+	}, nil
 }

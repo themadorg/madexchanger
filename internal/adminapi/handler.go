@@ -146,6 +146,10 @@ func (h *Handler) dispatch(w http.ResponseWriter, req *rpcRequest) {
 		h.handleRewrites(w, req)
 	case "/admin/filters":
 		h.handleFilters(w, req)
+	case "/admin/proxies":
+		h.handleProxies(w, req)
+	case "/admin/proxy-routes":
+		h.handleProxyRoutes(w, req)
 	default:
 		h.writeRPC(w, req.Resource, http.StatusNotFound, nil, "unknown resource: "+req.Resource)
 	}
@@ -402,5 +406,137 @@ func (h *Handler) writeRPC(w http.ResponseWriter, resource string, status int, b
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		h.log.Error("failed to encode RPC response", "err", err)
+	}
+}
+
+// --- Proxies ---
+
+type proxyDeleteBody struct {
+	ID int64 `json:"id"`
+}
+
+func (h *Handler) handleProxies(w http.ResponseWriter, req *rpcRequest) {
+	switch req.Method {
+	case "GET":
+		proxies, err := h.store.ListProxies()
+		if err != nil {
+			h.writeRPC(w, req.Resource, http.StatusInternalServerError, nil, err.Error())
+			return
+		}
+		if proxies == nil {
+			proxies = []db.Proxy{}
+		}
+		h.writeRPC(w, req.Resource, http.StatusOK, proxies, "")
+
+	case "POST":
+		var p db.Proxy
+		if err := json.Unmarshal(req.Body, &p); err != nil {
+			h.writeRPC(w, req.Resource, http.StatusBadRequest, nil, "invalid body: "+err.Error())
+			return
+		}
+		if p.Host == "" {
+			h.writeRPC(w, req.Resource, http.StatusBadRequest, nil, "host is required")
+			return
+		}
+		if p.Type == "" {
+			p.Type = "socks5"
+		}
+		if err := h.store.AddProxy(&p); err != nil {
+			h.writeRPC(w, req.Resource, http.StatusInternalServerError, nil, err.Error())
+			return
+		}
+		h.log.Info("proxy added", "id", p.ID, "name", p.Name, "type", p.Type, "host", p.Host)
+		h.writeRPC(w, req.Resource, http.StatusCreated, p, "")
+
+	case "PUT":
+		var p db.Proxy
+		if err := json.Unmarshal(req.Body, &p); err != nil {
+			h.writeRPC(w, req.Resource, http.StatusBadRequest, nil, "invalid body: "+err.Error())
+			return
+		}
+		if p.ID == 0 {
+			h.writeRPC(w, req.Resource, http.StatusBadRequest, nil, "id is required")
+			return
+		}
+		if err := h.store.UpdateProxy(&p); err != nil {
+			h.writeRPC(w, req.Resource, http.StatusInternalServerError, nil, err.Error())
+			return
+		}
+		h.log.Info("proxy updated", "id", p.ID, "name", p.Name)
+		h.writeRPC(w, req.Resource, http.StatusOK, p, "")
+
+	case "DELETE":
+		var body proxyDeleteBody
+		if err := json.Unmarshal(req.Body, &body); err != nil {
+			h.writeRPC(w, req.Resource, http.StatusBadRequest, nil, "invalid body: "+err.Error())
+			return
+		}
+		if err := h.store.DeleteProxy(body.ID); err != nil {
+			h.writeRPC(w, req.Resource, http.StatusInternalServerError, nil, err.Error())
+			return
+		}
+		h.log.Info("proxy deleted", "id", body.ID)
+		h.writeRPC(w, req.Resource, http.StatusOK, nil, "")
+
+	default:
+		h.writeRPC(w, req.Resource, http.StatusMethodNotAllowed, nil, "method not allowed")
+	}
+}
+
+// --- Proxy Routes ---
+
+type proxyRouteDeleteBody struct {
+	ID int64 `json:"id"`
+}
+
+func (h *Handler) handleProxyRoutes(w http.ResponseWriter, req *rpcRequest) {
+	switch req.Method {
+	case "GET":
+		routes, err := h.store.ListProxyRoutes()
+		if err != nil {
+			h.writeRPC(w, req.Resource, http.StatusInternalServerError, nil, err.Error())
+			return
+		}
+		if routes == nil {
+			routes = []db.ProxyRoute{}
+		}
+		h.writeRPC(w, req.Resource, http.StatusOK, routes, "")
+
+	case "POST":
+		var r db.ProxyRoute
+		if err := json.Unmarshal(req.Body, &r); err != nil {
+			h.writeRPC(w, req.Resource, http.StatusBadRequest, nil, "invalid body: "+err.Error())
+			return
+		}
+		if r.Destination == "" {
+			h.writeRPC(w, req.Resource, http.StatusBadRequest, nil, "destination is required")
+			return
+		}
+		if r.ProxyID == 0 {
+			h.writeRPC(w, req.Resource, http.StatusBadRequest, nil, "proxy_id is required")
+			return
+		}
+		if err := h.store.AddProxyRoute(&r); err != nil {
+			h.writeRPC(w, req.Resource, http.StatusInternalServerError, nil, err.Error())
+			return
+		}
+		h.log.Info("proxy route added", "id", r.ID, "destination", r.Destination, "proxy_id", r.ProxyID)
+		h.writeRPC(w, req.Resource, http.StatusCreated, r, "")
+
+	case "DELETE":
+		var body proxyRouteDeleteBody
+		if err := json.Unmarshal(req.Body, &body); err != nil {
+			h.writeRPC(w, req.Resource, http.StatusBadRequest, nil, "invalid body: "+err.Error())
+			return
+		}
+		if err := h.store.DeleteProxyRoute(body.ID); err != nil {
+			h.writeRPC(w, req.Resource, http.StatusInternalServerError, nil, err.Error())
+			return
+		}
+		h.log.Info("proxy route deleted", "id", body.ID)
+		h.writeRPC(w, req.Resource, http.StatusOK, nil, "")
+
+	default:
+		h.writeRPC(w, req.Resource, http.StatusMethodNotAllowed, nil, "method not allowed")
 	}
 }

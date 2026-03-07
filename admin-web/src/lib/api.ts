@@ -60,6 +60,26 @@ export interface RelayFilter {
     comment: string;
 }
 
+export interface Proxy {
+    id: number;
+    name: string;
+    type: string;       // "socks5", "http", "https"
+    host: string;       // host:port
+    username: string;
+    password: string;
+    enabled: boolean;
+    is_default: boolean;
+    comment: string;
+}
+
+export interface ProxyRoute {
+    id: number;
+    destination: string;
+    proxy_id: number;
+    proxy_name: string; // denormalized display name
+    comment: string;
+}
+
 // --- RPC Client ---
 
 export async function apiCall<T = unknown>(
@@ -139,4 +159,20 @@ export const api = {
         apiCall<RelayFilter>(c, '/admin/filters', 'PUT', filter),
     deleteFilter: (c: ApiConfig, id: number) =>
         apiCall(c, '/admin/filters', 'DELETE', { id }),
+
+    // Proxies
+    proxies: (c: ApiConfig) => apiCall<Proxy[]>(c, '/admin/proxies'),
+    addProxy: (c: ApiConfig, proxy: Omit<Proxy, 'id'>) =>
+        apiCall<Proxy>(c, '/admin/proxies', 'POST', proxy),
+    updateProxy: (c: ApiConfig, proxy: Proxy) =>
+        apiCall<Proxy>(c, '/admin/proxies', 'PUT', proxy),
+    deleteProxy: (c: ApiConfig, id: number) =>
+        apiCall(c, '/admin/proxies', 'DELETE', { id }),
+
+    // Proxy routes
+    proxyRoutes: (c: ApiConfig) => apiCall<ProxyRoute[]>(c, '/admin/proxy-routes'),
+    addProxyRoute: (c: ApiConfig, route: Omit<ProxyRoute, 'id' | 'proxy_name'>) =>
+        apiCall<ProxyRoute>(c, '/admin/proxy-routes', 'POST', route),
+    deleteProxyRoute: (c: ApiConfig, id: number) =>
+        apiCall(c, '/admin/proxy-routes', 'DELETE', { id }),
 };

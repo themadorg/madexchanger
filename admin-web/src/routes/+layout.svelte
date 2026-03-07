@@ -12,6 +12,7 @@
     LayoutDashboard,
     ArrowLeftRight,
     Filter,
+    Shield,
     Sun,
     Moon,
     Github,
@@ -47,6 +48,7 @@
     { href: "/", key: "Overview", icon: LayoutDashboard },
     { href: "/rewrites", key: "Rewrites", icon: ArrowLeftRight },
     { href: "/filters", key: "Filters", icon: Filter },
+    { href: "/proxies", key: "Proxies", icon: Shield },
   ];
 
   // Auto-connect on mount

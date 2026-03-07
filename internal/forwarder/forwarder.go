@@ -60,6 +60,21 @@ import (
 	"golang.org/x/net/proxy"
 )
 
+// ProxyResolver resolves the best proxy for a given destination.
+// Returns nil for direct connection (no proxy).
+type ProxyResolver interface {
+	ResolveProxy(destination string) (*ProxyInfo, error)
+}
+
+// ProxyInfo contains the proxy configuration needed to create an HTTP transport.
+type ProxyInfo struct {
+	Type     string // "socks5", "http", "https"
+	Host     string // host:port
+	Username string
+	Password string
+	Name     string // for logging
+}
+
 // Forwarder relays email data to destination servers via HTTP POST.
 // It routes dynamically by recipient domain or to a fixed downstream.
 type Forwarder struct {
@@ -67,8 +82,19 @@ type Forwarder struct {
 	// When non-empty, ALL messages go here instead of dynamic routing.
 	downstreamURL string
 
-	// client is the HTTP client used for outbound requests.
+	// client is the default HTTP client used for outbound requests
+	// (no proxy, or static proxy from config).
 	client *http.Client
+
+	// proxyResolver dynamically resolves proxies per destination from DB.
+	// When nil, the default client is always used.
+	proxyResolver ProxyResolver
+
+	// skipTLSVerify controls TLS verification for dynamic proxy clients.
+	skipTLSVerify bool
+
+	// timeout is the HTTP client timeout.
+	timeout time.Duration
 
 	log *logger.Logger
 }
@@ -114,15 +140,69 @@ func New(downstreamURL string, timeoutSec int, skipTLSVerify bool, proxyURL stri
 		}
 	}
 
+	timeout := time.Duration(timeoutSec) * time.Second
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   time.Duration(timeoutSec) * time.Second,
+		Timeout:   timeout,
 	}
 
 	return &Forwarder{
 		downstreamURL: downstreamURL,
 		client:        client,
+		skipTLSVerify: skipTLSVerify,
+		timeout:       timeout,
 		log:           log,
+	}
+}
+
+// SetProxyResolver sets the dynamic proxy resolver (from DB).
+// Must be called after New() and before any Forward() calls.
+func (f *Forwarder) SetProxyResolver(r ProxyResolver) {
+	f.proxyResolver = r
+}
+
+// clientForProxy creates an HTTP client configured for the given proxy.
+func (f *Forwarder) clientForProxy(p *ProxyInfo) *http.Client {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: f.skipTLSVerify, //nolint:gosec
+		},
+		MaxIdleConns:        10,
+		MaxIdleConnsPerHost: 2,
+		IdleConnTimeout:     90 * time.Second,
+	}
+
+	proxyURL := p.Type + "://" + p.Host
+
+	if p.Type == "socks5" {
+		var auth *proxy.Auth
+		if p.Username != "" {
+			auth = &proxy.Auth{User: p.Username, Password: p.Password}
+		}
+		dialer, err := proxy.SOCKS5("tcp", p.Host, auth, proxy.Direct)
+		if err != nil {
+			f.log.Error("failed to create SOCKS5 dialer for proxy", "err", err, "proxy", p.Name)
+			return f.client // fall back to default
+		}
+		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialer.Dial(network, addr)
+		}
+	} else {
+		// http:// or https:// CONNECT proxy
+		parsed, err := url.Parse(proxyURL)
+		if err != nil {
+			f.log.Error("failed to parse proxy URL", "err", err, "proxy", p.Name)
+			return f.client
+		}
+		if p.Username != "" {
+			parsed.User = url.UserPassword(p.Username, p.Password)
+		}
+		transport.Proxy = http.ProxyURL(parsed)
+	}
+
+	return &http.Client{
+		Transport: transport,
+		Timeout:   f.timeout,
 	}
 }
 
@@ -239,7 +319,23 @@ func (f *Forwarder) post(targetURL, mailFrom string, mailTo []string, body []byt
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	resp, err := f.client.Do(req)
+	// Resolve proxy for this destination.
+	client := f.client
+	if f.proxyResolver != nil {
+		// Extract host from target URL for proxy resolution.
+		parsed, parseErr := url.Parse(targetURL)
+		if parseErr == nil {
+			dest := parsed.Hostname()
+			pi, resolveErr := f.proxyResolver.ResolveProxy(dest)
+			if resolveErr == nil && pi != nil {
+				client = f.clientForProxy(pi)
+				f.log.Debug("using proxy for destination",
+					"destination", dest, "proxy", pi.Name, "type", pi.Type)
+			}
+		}
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("forwarder: request to %s failed: %w", targetURL, err)
 	}

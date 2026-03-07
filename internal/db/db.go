@@ -72,6 +72,30 @@ type RelayFilter struct {
 	Comment string `json:"comment"`
 }
 
+// Proxy represents an outbound proxy configuration stored in the database.
+type Proxy struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`     // human-readable label
+	Type      string `json:"type"`     // "socks5", "http", "https"
+	Host      string `json:"host"`     // host:port
+	Username  string `json:"username"` // optional auth
+	Password  string `json:"password"` // optional auth (masked in API)
+	Enabled   bool   `json:"enabled"`
+	IsDefault bool   `json:"is_default"` // use for all outgoing if true
+	Comment   string `json:"comment"`
+}
+
+// ProxyRoute maps a destination (domain/IP pattern) to a specific proxy.
+// When forwarding to a destination matching the pattern, the associated
+// proxy is used instead of the default or direct connection.
+type ProxyRoute struct {
+	ID          int64  `json:"id"`
+	Destination string `json:"destination"` // domain or IP pattern (e.g., "10.0.0.*")
+	ProxyID     int64  `json:"proxy_id"`    // FK to proxies table
+	ProxyName   string `json:"proxy_name"`  // denormalized for display (read-only)
+	Comment     string `json:"comment"`
+}
+
 // Stats holds aggregate relay statistics.
 type Stats struct {
 	TotalRelayed  int64 `json:"total_relayed"`
@@ -147,6 +171,26 @@ func (d *DB) migrate() error {
 		field   TEXT NOT NULL DEFAULT '',
 		pattern TEXT NOT NULL DEFAULT '',
 		comment TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE TABLE IF NOT EXISTS proxies (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		name       TEXT NOT NULL DEFAULT '',
+		type       TEXT NOT NULL DEFAULT 'socks5',
+		host       TEXT NOT NULL DEFAULT '',
+		username   TEXT NOT NULL DEFAULT '',
+		password   TEXT NOT NULL DEFAULT '',
+		enabled    INTEGER NOT NULL DEFAULT 1,
+		is_default INTEGER NOT NULL DEFAULT 0,
+		comment    TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE TABLE IF NOT EXISTS proxy_routes (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		destination TEXT NOT NULL DEFAULT '',
+		proxy_id    INTEGER NOT NULL,
+		comment     TEXT NOT NULL DEFAULT '',
+		FOREIGN KEY (proxy_id) REFERENCES proxies(id) ON DELETE CASCADE
 	);
 	`
 	_, err := d.db.Exec(schema)
@@ -377,4 +421,232 @@ func (d *DB) DeleteRelayFilter(id int64) error {
 
 	_, err := d.db.Exec(`DELETE FROM relay_filters WHERE id=?`, id)
 	return err
+}
+
+// --- Proxies ---
+
+// ListProxies returns all configured proxies.
+func (d *DB) ListProxies() ([]Proxy, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	rows, err := d.db.Query(`SELECT id, name, type, host, username, password, enabled, is_default, comment FROM proxies ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var proxies []Proxy
+	for rows.Next() {
+		var p Proxy
+		var enabled, isDefault int
+		if err := rows.Scan(&p.ID, &p.Name, &p.Type, &p.Host, &p.Username, &p.Password, &enabled, &isDefault, &p.Comment); err != nil {
+			return nil, err
+		}
+		p.Enabled = enabled != 0
+		p.IsDefault = isDefault != 0
+		proxies = append(proxies, p)
+	}
+	return proxies, rows.Err()
+}
+
+// GetProxy returns a single proxy by ID.
+func (d *DB) GetProxy(id int64) (*Proxy, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	var p Proxy
+	var enabled, isDefault int
+	err := d.db.QueryRow(`SELECT id, name, type, host, username, password, enabled, is_default, comment FROM proxies WHERE id=?`, id).Scan(
+		&p.ID, &p.Name, &p.Type, &p.Host, &p.Username, &p.Password, &enabled, &isDefault, &p.Comment,
+	)
+	if err != nil {
+		return nil, err
+	}
+	p.Enabled = enabled != 0
+	p.IsDefault = isDefault != 0
+	return &p, nil
+}
+
+// AddProxy inserts a new proxy. If IsDefault is true, all other proxies
+// are set to non-default first.
+func (d *DB) AddProxy(p *Proxy) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if p.IsDefault {
+		_, _ = d.db.Exec(`UPDATE proxies SET is_default=0`)
+	}
+
+	enabled := 0
+	if p.Enabled {
+		enabled = 1
+	}
+	isDefault := 0
+	if p.IsDefault {
+		isDefault = 1
+	}
+
+	res, err := d.db.Exec(
+		`INSERT INTO proxies (name, type, host, username, password, enabled, is_default, comment) VALUES (?,?,?,?,?,?,?,?)`,
+		p.Name, p.Type, p.Host, p.Username, p.Password, enabled, isDefault, p.Comment,
+	)
+	if err != nil {
+		return err
+	}
+	p.ID, _ = res.LastInsertId()
+	return nil
+}
+
+// UpdateProxy updates an existing proxy by ID.
+func (d *DB) UpdateProxy(p *Proxy) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if p.IsDefault {
+		_, _ = d.db.Exec(`UPDATE proxies SET is_default=0 WHERE id != ?`, p.ID)
+	}
+
+	enabled := 0
+	if p.Enabled {
+		enabled = 1
+	}
+	isDefault := 0
+	if p.IsDefault {
+		isDefault = 1
+	}
+
+	_, err := d.db.Exec(
+		`UPDATE proxies SET name=?, type=?, host=?, username=?, password=?, enabled=?, is_default=?, comment=? WHERE id=?`,
+		p.Name, p.Type, p.Host, p.Username, p.Password, enabled, isDefault, p.Comment, p.ID,
+	)
+	return err
+}
+
+// DeleteProxy removes a proxy by ID and its associated routes.
+func (d *DB) DeleteProxy(id int64) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, _ = d.db.Exec(`DELETE FROM proxy_routes WHERE proxy_id=?`, id)
+	_, err := d.db.Exec(`DELETE FROM proxies WHERE id=?`, id)
+	return err
+}
+
+// GetDefaultProxy returns the proxy marked as default, or nil if none.
+func (d *DB) GetDefaultProxy() (*Proxy, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	var p Proxy
+	var enabled, isDefault int
+	err := d.db.QueryRow(
+		`SELECT id, name, type, host, username, password, enabled, is_default, comment FROM proxies WHERE is_default=1 AND enabled=1 LIMIT 1`,
+	).Scan(&p.ID, &p.Name, &p.Type, &p.Host, &p.Username, &p.Password, &enabled, &isDefault, &p.Comment)
+	if err != nil {
+		return nil, err
+	}
+	p.Enabled = enabled != 0
+	p.IsDefault = isDefault != 0
+	return &p, nil
+}
+
+// --- Proxy Routes ---
+
+// ListProxyRoutes returns all proxy routes with denormalized proxy name.
+func (d *DB) ListProxyRoutes() ([]ProxyRoute, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	rows, err := d.db.Query(`
+		SELECT pr.id, pr.destination, pr.proxy_id, COALESCE(p.name, ''), pr.comment
+		FROM proxy_routes pr
+		LEFT JOIN proxies p ON p.id = pr.proxy_id
+		ORDER BY pr.id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var routes []ProxyRoute
+	for rows.Next() {
+		var r ProxyRoute
+		if err := rows.Scan(&r.ID, &r.Destination, &r.ProxyID, &r.ProxyName, &r.Comment); err != nil {
+			return nil, err
+		}
+		routes = append(routes, r)
+	}
+	return routes, rows.Err()
+}
+
+// AddProxyRoute inserts a new proxy route.
+func (d *DB) AddProxyRoute(r *ProxyRoute) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	res, err := d.db.Exec(
+		`INSERT INTO proxy_routes (destination, proxy_id, comment) VALUES (?,?,?)`,
+		r.Destination, r.ProxyID, r.Comment,
+	)
+	if err != nil {
+		return err
+	}
+	r.ID, _ = res.LastInsertId()
+	return nil
+}
+
+// DeleteProxyRoute removes a proxy route by ID.
+func (d *DB) DeleteProxyRoute(id int64) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`DELETE FROM proxy_routes WHERE id=?`, id)
+	return err
+}
+
+// ResolveProxy finds the best proxy for a given destination.
+// It first checks proxy_routes for a matching destination pattern,
+// then falls back to the default proxy. Returns nil for direct connection.
+func (d *DB) ResolveProxy(destination string) (*Proxy, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	// Check specific routes first
+	var proxyID int64
+	err := d.db.QueryRow(
+		`SELECT pr.proxy_id FROM proxy_routes pr
+		 JOIN proxies p ON p.id = pr.proxy_id AND p.enabled = 1
+		 WHERE ? LIKE REPLACE(REPLACE(pr.destination, '*', '%'), '?', '_')
+		 LIMIT 1`,
+		destination,
+	).Scan(&proxyID)
+	if err == nil {
+		// Found a route match, get the proxy
+		var p Proxy
+		var enabled, isDefault int
+		err = d.db.QueryRow(
+			`SELECT id, name, type, host, username, password, enabled, is_default, comment FROM proxies WHERE id=?`, proxyID,
+		).Scan(&p.ID, &p.Name, &p.Type, &p.Host, &p.Username, &p.Password, &enabled, &isDefault, &p.Comment)
+		if err != nil {
+			return nil, err
+		}
+		p.Enabled = enabled != 0
+		p.IsDefault = isDefault != 0
+		return &p, nil
+	}
+
+	// Fall back to default proxy
+	var p Proxy
+	var enabled2, isDefault2 int
+	err = d.db.QueryRow(
+		`SELECT id, name, type, host, username, password, enabled, is_default, comment FROM proxies WHERE is_default=1 AND enabled=1 LIMIT 1`,
+	).Scan(&p.ID, &p.Name, &p.Type, &p.Host, &p.Username, &p.Password, &enabled2, &isDefault2, &p.Comment)
+	if err != nil {
+		// No default proxy — direct connection
+		return nil, nil //nolint:nilnil
+	}
+	p.Enabled = enabled2 != 0
+	p.IsDefault = isDefault2 != 0
+	return &p, nil
 }

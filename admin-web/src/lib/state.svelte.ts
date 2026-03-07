@@ -1,7 +1,7 @@
 // Reactive state store for the Madexchanger admin dashboard.
 // Follows the same pattern as Madmail's state.svelte.ts.
 
-import { api, type ApiConfig, type Stats, type RelayConfig, type MessageRecord, type RewriteRule, type RelayFilter } from './api';
+import { api, type ApiConfig, type Stats, type RelayConfig, type MessageRecord, type RewriteRule, type RelayFilter, type Proxy, type ProxyRoute } from './api';
 
 function createStore() {
     // Connection
@@ -18,6 +18,8 @@ function createStore() {
     let messages = $state<MessageRecord[]>([]);
     let rewrites = $state<RewriteRule[]>([]);
     let filters = $state<RelayFilter[]>([]);
+    let proxies = $state<Proxy[]>([]);
+    let proxyRoutes = $state<ProxyRoute[]>([]);
 
     // Toast
     let toast = $state('');
@@ -65,23 +67,29 @@ function createStore() {
         messages = [];
         rewrites = [];
         filters = [];
+        proxies = [];
+        proxyRoutes = [];
     }
 
     async function refresh() {
         refreshing = true;
         try {
-            const [s, c, m, rw, fl] = await Promise.all([
+            const [s, c, m, rw, fl, px, pr] = await Promise.all([
                 api.stats(cfg()),
                 api.config(cfg()),
                 api.messages(cfg(), 50),
                 api.rewrites(cfg()),
                 api.filters(cfg()),
+                api.proxies(cfg()),
+                api.proxyRoutes(cfg()),
             ]);
             if (s.data) stats = s.data;
             if (c.data) config = c.data;
             if (m.data) messages = m.data;
             if (rw.data) rewrites = rw.data;
             if (fl.data) filters = fl.data;
+            if (px.data) proxies = px.data;
+            if (pr.data) proxyRoutes = pr.data;
         } catch (e) {
             notify(String(e), 'err');
         } finally {
@@ -139,6 +147,43 @@ function createStore() {
         await loadFilters();
     }
 
+    // --- Proxy CRUD ---
+
+    async function addProxy(proxy: Omit<Proxy, 'id'>) {
+        const res = await api.addProxy(cfg(), proxy);
+        if (res.error) { notify(res.error, 'err'); return; }
+        notify('Proxy added');
+        await loadProxies();
+    }
+
+    async function updateProxy(proxy: Proxy) {
+        const res = await api.updateProxy(cfg(), proxy);
+        if (res.error) { notify(res.error, 'err'); return; }
+        await loadProxies();
+    }
+
+    async function deleteProxy(id: number) {
+        const res = await api.deleteProxy(cfg(), id);
+        if (res.error) { notify(res.error, 'err'); return; }
+        notify('Proxy deleted');
+        await loadProxies();
+        await loadProxyRoutes();
+    }
+
+    async function addProxyRoute(route: Omit<ProxyRoute, 'id' | 'proxy_name'>) {
+        const res = await api.addProxyRoute(cfg(), route);
+        if (res.error) { notify(res.error, 'err'); return; }
+        notify('Proxy route added');
+        await loadProxyRoutes();
+    }
+
+    async function deleteProxyRoute(id: number) {
+        const res = await api.deleteProxyRoute(cfg(), id);
+        if (res.error) { notify(res.error, 'err'); return; }
+        notify('Route deleted');
+        await loadProxyRoutes();
+    }
+
     async function loadRewrites() {
         const res = await api.rewrites(cfg());
         if (res.data) rewrites = res.data;
@@ -147,6 +192,16 @@ function createStore() {
     async function loadFilters() {
         const res = await api.filters(cfg());
         if (res.data) filters = res.data;
+    }
+
+    async function loadProxies() {
+        const res = await api.proxies(cfg());
+        if (res.data) proxies = res.data;
+    }
+
+    async function loadProxyRoutes() {
+        const res = await api.proxyRoutes(cfg());
+        if (res.data) proxyRoutes = res.data;
     }
 
     function fmtBytes(b: number): string {
@@ -170,6 +225,8 @@ function createStore() {
         get messages() { return messages; },
         get rewrites() { return rewrites; },
         get filters() { return filters; },
+        get proxies() { return proxies; },
+        get proxyRoutes() { return proxyRoutes; },
         get toast() { return toast; },
         get toastType() { return toastType; },
         connect,
@@ -183,6 +240,11 @@ function createStore() {
         addFilter,
         updateFilter,
         deleteFilter,
+        addProxy,
+        updateProxy,
+        deleteProxy,
+        addProxyRoute,
+        deleteProxyRoute,
         fmtBytes,
     };
 }
