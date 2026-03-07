@@ -15,6 +15,25 @@ permissions:
   checks: write
 
 jobs:
+  semantic-release:
+    name: Semantic Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: npm ci
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
+
 
   lint-and-build:
     name: Lint and Build
@@ -41,7 +60,7 @@ jobs:
           test -z "$(gofmt -l .)"
       - name: Go vet
         run: go vet ./...
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v7
         with:
           version: v2.0.2
           args: --timeout=10m
@@ -93,7 +112,7 @@ jobs:
           retention-days: 30
 
   build-summary:
-    needs: [lint-and-build, static-build]
+    needs: [lint-and-build, static-build, semantic-release]
     runs-on: ubuntu-latest
     if: always()
     steps:

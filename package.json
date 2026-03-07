@@ -1,0 +1,28 @@
+{
+    "name": "madexchanger",
+    "version": "1.0.0",
+    "description": "HTTPS mail relay for routing messages between madmail servers",
+    "private": true,
+    "scripts": {
+        "test": "echo \"No npm tests\" && exit 0"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/themadorg/madexchanger.git"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "bugs": {
+        "url": "https://github.com/themadorg/madexchanger/issues"
+    },
+    "homepage": "https://github.com/themadorg/madexchanger#readme",
+    "devDependencies": {
+        "@semantic-release/changelog": "^6.0.3",
+        "@semantic-release/commit-analyzer": "^13.0.1",
+        "@semantic-release/exec": "^7.1.0",
+        "@semantic-release/git": "^10.0.1",
+        "@semantic-release/release-notes-generator": "^14.1.0",
+        "semantic-release": "^25.0.2"
+    }
+}
