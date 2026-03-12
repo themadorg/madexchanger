@@ -1,6 +1,6 @@
 {
     "name": "madexchanger",
-    "version": "1.0.5",
+    "version": "1.1.0",
     "description": "HTTPS mail relay for routing messages between madmail servers",
     "private": true,
     "scripts": {

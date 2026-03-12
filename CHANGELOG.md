@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/themadorg/madexchanger/compare/v1.0.5...v1.1.0) (2026-03-12)
+
+
+### Features
+
+* add comprehensive proxy support for outgoing connections ([5a498b0](https://github.com/themadorg/madexchanger/commit/5a498b025c17498a880c5da72c52821f10c0304c))
+
 ## [1.0.5](https://github.com/themadorg/madexchanger/compare/v1.0.4...v1.0.5) (2026-03-07)
 
 
