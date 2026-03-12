@@ -1,4 +1,8 @@
-.PHONY: build test lint clean fmt vet admin-web stage-admin-web all
+.PHONY: build test lint clean fmt vet admin-web stage-admin-web all push log
+
+# Load environment variables (contains server IPs, gitignored)
+-include .env
+export
 
 VERSION ?= dev
 LDFLAGS := -ldflags "-X main.Version=$(VERSION)"
@@ -64,3 +68,21 @@ clean:
 	rm -rf $(ADMIN_WEB_DEST)
 	mkdir -p $(ADMIN_WEB_DEST)
 	echo "placeholder" > $(ADMIN_WEB_DEST)/placeholder
+
+## push — Build and deploy to the exchanger server.
+##         Uploads binary, restarts the service.
+##         Server IP is set in .env (EXCHANGER1=x.x.x.x).
+push: build
+	@if [ -z "$(EXCHANGER1)" ]; then \
+		echo "❌ EXCHANGER1 not set. Create .env with EXCHANGER1=<ip>"; \
+		exit 1; \
+	fi
+	@echo "📦 Uploading madexchanger to $(EXCHANGER1)..."
+	scp $(BINARY) root@$(EXCHANGER1):/usr/local/bin/madexchanger-new
+	@echo "🔄 Restarting madexchanger on $(EXCHANGER1)..."
+	ssh root@$(EXCHANGER1) "mv /usr/local/bin/madexchanger-new /usr/local/bin/madexchanger && systemctl restart madexchanger"
+	@echo "✅ Deployed and restarted on $(EXCHANGER1)"
+
+## log — Tail the madexchanger logs on the remote server.
+log:
+	ssh root@$(EXCHANGER1) "journalctl -u madexchanger -f"

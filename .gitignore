@@ -1,5 +1,8 @@
 # Binaries
 /madexchanger
+
+# Environment (contains server IPs)
+.env
 /madexchanger-linux-amd64
 *.exe
 *.exe~
