@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/themadorg/madexchanger/compare/v1.1.0...v1.1.1) (2026-03-12)
+
+
+### Bug Fixes
+
+* strip brackets from IPv4 domains before URL construction ([803121c](https://github.com/themadorg/madexchanger/commit/803121ca36439591f0c6ac26c40c53e068adffb1))
+
 # [1.1.0](https://github.com/themadorg/madexchanger/compare/v1.0.5...v1.1.0) (2026-03-12)
 
 
