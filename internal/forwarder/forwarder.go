@@ -60,6 +60,20 @@ import (
 	"golang.org/x/net/proxy"
 )
 
+// hostForURL returns a host string suitable for URL construction.
+// It strips brackets from bracketed IP literals (e.g. "[1.2.3.4]" → "1.2.3.4")
+// and only re-wraps the address in brackets when it is an IPv6 address,
+// since Go's url.Parse requires brackets around IPv6 but rejects them around IPv4.
+func hostForURL(domain string) string {
+	h := strings.TrimPrefix(domain, "[")
+	h = strings.TrimSuffix(h, "]")
+	// Only wrap in brackets for IPv6 (contains ":")
+	if ip := net.ParseIP(h); ip != nil && ip.To4() == nil {
+		return "[" + h + "]"
+	}
+	return h
+}
+
 // ProxyResolver resolves the best proxy for a given destination.
 // Returns nil for direct connection (no proxy).
 type ProxyResolver interface {
@@ -253,11 +267,7 @@ func (f *Forwarder) Forward(mailFrom string, mailTo []string, body []byte) []For
 	results := make([]ForwardResult, 0, len(groups))
 
 	for domain, rcpts := range groups {
-		host := domain
-		// For IPv6, wrap in brackets.
-		if strings.Contains(host, ":") {
-			host = "[" + host + "]"
-		}
+		host := hostForURL(domain)
 
 		// Try HTTPS first, fall back to HTTP — matching Madmail's tryHTTP.
 		httpsURL := "https://" + host + config.DeliveryPath
@@ -290,10 +300,7 @@ func (f *Forwarder) ResolveTarget(domain string) string {
 	if f.downstreamURL != "" {
 		return strings.TrimRight(f.downstreamURL, "/") + config.DeliveryPath
 	}
-	host := domain
-	if strings.Contains(host, ":") {
-		host = "[" + host + "]"
-	}
+	host := hostForURL(domain)
 	return "https://" + host + config.DeliveryPath
 }
 
@@ -368,11 +375,15 @@ func groupByDomain(addrs []string) map[string][]string {
 	return groups
 }
 
-// domainOf extracts the domain part from an email address.
+// domainOf extracts the domain part from an email address and normalises it
+// by stripping brackets. Both "user@[1.2.3.4]" and "user@1.2.3.4" return "1.2.3.4".
 func domainOf(email string) string {
 	parts := strings.SplitN(email, "@", 2)
 	if len(parts) == 2 {
-		return parts[1]
+		d := parts[1]
+		d = strings.TrimPrefix(d, "[")
+		d = strings.TrimSuffix(d, "]")
+		return d
 	}
 	return email
 }

@@ -69,13 +69,14 @@ func TestDynamicForwardGroupsByDomain(t *testing.T) {
 		"bob@2.2.2.2",
 		"charlie@1.1.1.1",
 		"dave@3.3.3.3",
+		"eve@[1.1.1.1]",  // bracketed IPv4 should group with bare
 	})
 
 	if len(groups) != 3 {
-		t.Fatalf("expected 3 domain groups, got %d", len(groups))
+		t.Fatalf("expected 3 domain groups, got %d: %v", len(groups), groups)
 	}
-	if len(groups["1.1.1.1"]) != 2 {
-		t.Errorf("1.1.1.1 group has %d members, want 2", len(groups["1.1.1.1"]))
+	if len(groups["1.1.1.1"]) != 3 {
+		t.Errorf("1.1.1.1 group has %d members, want 3 (bare + bracketed)", len(groups["1.1.1.1"]))
 	}
 	if len(groups["2.2.2.2"]) != 1 {
 		t.Errorf("2.2.2.2 group has %d members, want 1", len(groups["2.2.2.2"]))
@@ -130,6 +131,11 @@ func TestResolveTarget(t *testing.T) {
 		t.Errorf("dynamic resolve = %q, want https://2.2.2.2/mxdeliv", got)
 	}
 
+	// Dynamic mode — bracketed IPv4 (the root cause bug).
+	if got := fwd2.ResolveTarget("[10.0.0.1]"); got != "https://10.0.0.1/mxdeliv" {
+		t.Errorf("bracketed ipv4 resolve = %q, want https://10.0.0.1/mxdeliv", got)
+	}
+
 	// IPv6.
 	if got := fwd2.ResolveTarget("::1"); got != "https://[::1]/mxdeliv" {
 		t.Errorf("ipv6 resolve = %q", got)
@@ -140,12 +146,28 @@ func TestDomainOf(t *testing.T) {
 	tests := []struct{ input, want string }{
 		{"alice@example.org", "example.org"},
 		{"bob@1.2.3.4", "1.2.3.4"},
+		{"carol@[10.0.0.1]", "10.0.0.1"},  // bracketed IPv4
 		{"noatsign", "noatsign"},
 		{"@only-domain", "only-domain"},
 	}
 	for _, tt := range tests {
 		if got := domainOf(tt.input); got != tt.want {
 			t.Errorf("domainOf(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestHostForURL(t *testing.T) {
+	tests := []struct{ input, want string }{
+		{"1.2.3.4", "1.2.3.4"},               // bare IPv4
+		{"[10.0.0.1]", "10.0.0.1"}, // bracketed IPv4 → strip
+		{"example.org", "example.org"},         // domain name
+		{"::1", "[::1]"},                       // IPv6 → wrap
+		{"[::1]", "[::1]"},                     // already bracketed IPv6
+	}
+	for _, tt := range tests {
+		if got := hostForURL(tt.input); got != tt.want {
+			t.Errorf("hostForURL(%q) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
 }
