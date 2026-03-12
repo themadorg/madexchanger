@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/themadorg/madexchanger/compare/v1.1.1...v1.2.0) (2026-03-12)
+
+
+### Features
+
+* add make push and log targets for remote deployment ([843dba2](https://github.com/themadorg/madexchanger/commit/843dba27fb29c59a4e52da6b79a96f0856b48927))
+
 ## [1.1.1](https://github.com/themadorg/madexchanger/compare/v1.1.0...v1.1.1) (2026-03-12)
 
 
