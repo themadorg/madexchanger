@@ -8,7 +8,6 @@
   let host = $state("");
   let username = $state("");
   let password = $state("");
-  let isDefault = $state(false);
   let comment = $state("");
 
   async function addProxy() {
@@ -23,14 +22,12 @@
       username: username.trim(),
       password: password.trim(),
       enabled: true,
-      is_default: isDefault,
       comment: comment.trim(),
     });
     name = "";
     host = "";
     username = "";
     password = "";
-    isDefault = false;
     comment = "";
   }
 
@@ -38,9 +35,6 @@
     await store.updateProxy({ ...proxy, enabled: !proxy.enabled });
   }
 
-  async function toggleDefault(proxy: (typeof store.proxies)[0]) {
-    await store.updateProxy({ ...proxy, is_default: !proxy.is_default });
-  }
 
   async function delProxy(id: number) {
     if (!confirm("Delete this proxy and all its routes?")) return;
@@ -84,8 +78,7 @@
   </h3>
   <p class="text-xs text-text-2 mb-4">
     Configure SOCKS5 or HTTP/HTTPS CONNECT proxies for outgoing email
-    forwarding. Mark one as <strong>default</strong> to route all outgoing traffic
-    through it.
+    forwarding. Use <strong>Proxy Routes</strong> below to map destinations to proxies.
   </p>
 
   <!-- Add Proxy Form -->
@@ -119,12 +112,6 @@
       placeholder="Password"
       class="flex-[0.5] min-w-[80px] px-2 py-1.5 text-xs bg-surface border border-border rounded-lg text-text placeholder-text-2/40 focus:border-accent outline-none transition"
     />
-    <label
-      class="flex items-center gap-1 text-xs text-text-2 whitespace-nowrap"
-    >
-      <input type="checkbox" bind:checked={isDefault} class="accent-accent" />
-      Default
-    </label>
     <button
       onclick={addProxy}
       class="px-3 py-1.5 text-xs border border-accent/30 rounded-lg hover:bg-accent/10 text-accent transition-colors font-medium"
@@ -143,7 +130,6 @@
           <th class="pb-2 pr-3 font-medium">Type</th>
           <th class="pb-2 pr-3 font-medium">Host</th>
           <th class="pb-2 pr-3 font-medium">Auth</th>
-          <th class="pb-2 pr-3 font-medium">Default</th>
           <th class="pb-2 pr-3 font-medium">Comment</th>
           <th class="pb-2 font-medium w-8"></th>
         </tr>
@@ -151,7 +137,7 @@
       <tbody>
         {#if store.proxies.length === 0}
           <tr>
-            <td colspan="8" class="text-center text-text-2 py-8">
+            <td colspan="7" class="text-center text-text-2 py-8">
               No proxies configured
             </td>
           </tr>
@@ -184,17 +170,6 @@
               <td class="py-2 pr-3 font-mono">{proxy.host}</td>
               <td class="py-2 pr-3 text-text-2">
                 {proxy.username ? "✓" : "—"}
-              </td>
-              <td class="py-2 pr-3">
-                <button
-                  onclick={() => toggleDefault(proxy)}
-                  class="text-xs px-2 py-0.5 rounded transition-colors
-                    {proxy.is_default
-                    ? 'bg-success/20 text-success border border-success/30'
-                    : 'bg-surface-3 text-text-2 border border-border hover:border-accent/30'}"
-                >
-                  {proxy.is_default ? "★ Default" : "Set"}
-                </button>
               </td>
               <td class="py-2 pr-3 text-text-2">{proxy.comment}</td>
               <td class="py-2">
@@ -274,8 +249,7 @@
         {#if store.proxyRoutes.length === 0}
           <tr>
             <td colspan="4" class="text-center text-text-2 py-8">
-              No proxy routes configured — all traffic uses the default proxy or
-              direct connection
+              No proxy routes configured — all traffic uses direct connection
             </td>
           </tr>
         {:else}

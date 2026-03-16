@@ -81,7 +81,7 @@ func runProxyCmd(store *db.DB, args []string) {
 			os.Exit(1)
 		}
 		tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-		_, _ = fmt.Fprintln(tw, "ID\tNAME\tTYPE\tHOST\tAUTH\tENABLED\tDEFAULT\tCOMMENT")
+		_, _ = fmt.Fprintln(tw, "ID\tNAME\tTYPE\tHOST\tAUTH\tENABLED\tCOMMENT")
 		for _, p := range proxies {
 			auth := "—"
 			if p.Username != "" {
@@ -91,12 +91,8 @@ func runProxyCmd(store *db.DB, args []string) {
 			if p.Enabled {
 				enabled = "✓"
 			}
-			def := ""
-			if p.IsDefault {
-				def = "★"
-			}
-			_, _ = fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				p.ID, p.Name, p.Type, p.Host, auth, enabled, def, p.Comment)
+			_, _ = fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				p.ID, p.Name, p.Type, p.Host, auth, enabled, p.Comment)
 		}
 		_ = tw.Flush()
 
@@ -117,8 +113,6 @@ func runProxyCmd(store *db.DB, args []string) {
 
 		for _, arg := range args[4:] {
 			switch {
-			case arg == "--default":
-				p.IsDefault = true
 			case strings.HasPrefix(arg, "--username="):
 				p.Username = strings.TrimPrefix(arg, "--username=")
 			case strings.HasPrefix(arg, "--password="):
@@ -235,7 +229,7 @@ func printCLIUsage() {
 Proxy Management:
   madexchanger proxy list                              List all proxies
   madexchanger proxy add <name> <type> <host:port>     Add a proxy (type: socks5, http, https)
-    [--default] [--username=USER] [--password=PASS] [--comment=TEXT]
+    [--username=USER] [--password=PASS] [--comment=TEXT]
   madexchanger proxy remove <id>                       Delete a proxy
 
 Proxy Route Management:

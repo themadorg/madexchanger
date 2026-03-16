@@ -69,7 +69,7 @@ func TestDynamicForwardGroupsByDomain(t *testing.T) {
 		"bob@2.2.2.2",
 		"charlie@1.1.1.1",
 		"dave@3.3.3.3",
-		"eve@[1.1.1.1]",  // bracketed IPv4 should group with bare
+		"eve@[1.1.1.1]", // bracketed IPv4 should group with bare
 	})
 
 	if len(groups) != 3 {
@@ -146,7 +146,7 @@ func TestDomainOf(t *testing.T) {
 	tests := []struct{ input, want string }{
 		{"alice@example.org", "example.org"},
 		{"bob@1.2.3.4", "1.2.3.4"},
-		{"carol@[10.0.0.1]", "10.0.0.1"},  // bracketed IPv4
+		{"carol@[10.0.0.1]", "10.0.0.1"}, // bracketed IPv4
 		{"noatsign", "noatsign"},
 		{"@only-domain", "only-domain"},
 	}
@@ -159,11 +159,11 @@ func TestDomainOf(t *testing.T) {
 
 func TestHostForURL(t *testing.T) {
 	tests := []struct{ input, want string }{
-		{"1.2.3.4", "1.2.3.4"},               // bare IPv4
-		{"[10.0.0.1]", "10.0.0.1"}, // bracketed IPv4 → strip
-		{"example.org", "example.org"},         // domain name
-		{"::1", "[::1]"},                       // IPv6 → wrap
-		{"[::1]", "[::1]"},                     // already bracketed IPv6
+		{"1.2.3.4", "1.2.3.4"},         // bare IPv4
+		{"[10.0.0.1]", "10.0.0.1"},     // bracketed IPv4 → strip
+		{"example.org", "example.org"}, // domain name
+		{"::1", "[::1]"},               // IPv6 → wrap
+		{"[::1]", "[::1]"},             // already bracketed IPv6
 	}
 	for _, tt := range tests {
 		if got := hostForURL(tt.input); got != tt.want {

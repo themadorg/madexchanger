@@ -1,5 +1,6 @@
 <script lang="ts">
   import { store } from "$lib/state.svelte";
+  import RelayDiagram from "$lib/components/RelayDiagram.svelte";
   import {
     ArrowUpRight,
     ArrowDownLeft,
@@ -85,6 +86,15 @@
     </span>
   </div>
 </div>
+
+<!-- Relay Flow Animation -->
+<RelayDiagram
+  config={store.config}
+  filters={store.filters}
+  messages={store.messages}
+  proxies={store.proxies}
+  proxyRoutes={store.proxyRoutes}
+/>
 
 <!-- Stats Grid -->
 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">

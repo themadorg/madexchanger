@@ -1,4 +1,4 @@
-.PHONY: build test lint clean fmt vet admin-web stage-admin-web all push log
+.PHONY: build test lint clean fmt vet admin-web stage-admin-web all push log run-web run-back
 
 # Load environment variables (contains server IPs, gitignored)
 -include .env
@@ -86,3 +86,11 @@ push: build
 ## log — Tail the madexchanger logs on the remote server.
 log:
 	ssh root@$(EXCHANGER1) "journalctl -u madexchanger -f"
+
+## run-web — Start the SvelteKit admin dashboard dev server.
+run-web:
+	cd $(ADMIN_WEB_SRC) && npm run dev
+
+## run-back — Build and run the madexchanger backend locally.
+run-back: build
+	./$(BINARY) -config config.yml

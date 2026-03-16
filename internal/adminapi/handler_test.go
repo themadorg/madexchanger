@@ -44,7 +44,7 @@ func setupHandler(t *testing.T) *Handler {
 	t.Cleanup(func() { _ = store.Close() })
 
 	cfg := &config.Config{
-		RelayMode:     "all",
+		IncomingMode:  "all",
 		DownstreamURL: "https://10.0.0.5",
 		ReceivePath:   "/mxdeliv",
 		SkipTLSVerify: true,
@@ -158,15 +158,15 @@ func TestGetConfig(t *testing.T) {
 		t.Fatalf("status = %d, want 200", resp.Status)
 	}
 	body := resp.Body.(map[string]interface{})
-	if body["relay_mode"] != "all" {
-		t.Errorf("relay_mode = %v, want all", body["relay_mode"])
+	if body["incoming_mode"] != "all" {
+		t.Errorf("incoming_mode = %v, want all", body["incoming_mode"])
 	}
 }
 
-func TestUpdateRelayMode(t *testing.T) {
+func TestUpdateIncomingMode(t *testing.T) {
 	h := setupHandler(t)
 
-	w := rpc(h, "POST", "/admin/config", map[string]string{"relay_mode": "selected"})
+	w := rpc(h, "POST", "/admin/config", map[string]string{"incoming_mode": "selected"})
 	resp := parseResponse(t, w)
 	if resp.Status != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.Status)
@@ -176,14 +176,14 @@ func TestUpdateRelayMode(t *testing.T) {
 	w = rpc(h, "GET", "/admin/config", nil)
 	resp = parseResponse(t, w)
 	body := resp.Body.(map[string]interface{})
-	if body["relay_mode"] != "selected" {
-		t.Errorf("relay_mode = %v, want selected", body["relay_mode"])
+	if body["incoming_mode"] != "selected" {
+		t.Errorf("incoming_mode = %v, want selected", body["incoming_mode"])
 	}
 }
 
-func TestUpdateRelayModeInvalid(t *testing.T) {
+func TestUpdateIncomingModeInvalid(t *testing.T) {
 	h := setupHandler(t)
-	w := rpc(h, "POST", "/admin/config", map[string]string{"relay_mode": "invalid"})
+	w := rpc(h, "POST", "/admin/config", map[string]string{"incoming_mode": "invalid"})
 	resp := parseResponse(t, w)
 	if resp.Status != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", resp.Status)

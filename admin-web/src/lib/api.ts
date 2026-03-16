@@ -68,7 +68,6 @@ export interface Proxy {
     username: string;
     password: string;
     enabled: boolean;
-    is_default: boolean;
     comment: string;
 }
 

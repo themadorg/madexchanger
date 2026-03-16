@@ -24,7 +24,7 @@
     typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
 
   let canConnect = $derived(
-    store.baseUrl.length > 0 && store.token.length > 0 && !store.connecting
+    store.baseUrl.length > 0 && store.token.length > 0 && !store.connecting,
   );
 
   // Theme toggle
@@ -36,7 +36,7 @@
   $effect(() => {
     document.documentElement.setAttribute(
       "data-theme",
-      isDark ? "dark" : "light"
+      isDark ? "dark" : "light",
     );
     localStorage.setItem("mxe_theme", isDark ? "dark" : "light");
   });
@@ -118,8 +118,7 @@
         </div>
       </div>
 
-      <label for="url" class="block text-xs text-text-2 mb-1">Server URL</label
-      >
+      <label for="url" class="block text-xs text-text-2 mb-1">Server URL</label>
       <input
         id="url"
         type="url"
