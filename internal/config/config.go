@@ -244,5 +244,3 @@ func (c *Config) validate() error {
 func (c *Config) HasTLS() bool {
 	return c.TLS.CertFile != "" && c.TLS.KeyFile != ""
 }
-	return c.TLS.CertFile != "" && c.TLS.KeyFile != ""
-}

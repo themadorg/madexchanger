@@ -542,18 +542,3 @@ func domainOf(email string) string {
 	}
 	return email
 }
-	}
-	if strings.HasSuffix(pattern, "*") {
-		return strings.HasPrefix(value, pattern[:len(pattern)-1])
-	}
-	return false
-}
-
-// domainOf extracts the domain part from an email address.
-func domainOf(email string) string {
-	parts := strings.SplitN(email, "@", 2)
-	if len(parts) == 2 {
-		return parts[1]
-	}
-	return email
-}

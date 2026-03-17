@@ -540,9 +540,3 @@ func (h *Handler) handleProxyRoutes(w http.ResponseWriter, req *rpcRequest) {
 		h.writeRPC(w, req.Resource, http.StatusMethodNotAllowed, nil, "method not allowed")
 	}
 }
-		h.writeRPC(w, req.Resource, http.StatusOK, nil, "")
-
-	default:
-		h.writeRPC(w, req.Resource, http.StatusMethodNotAllowed, nil, "method not allowed")
-	}
-}

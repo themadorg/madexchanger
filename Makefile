@@ -14,7 +14,7 @@ ADMIN_WEB_DEST := internal/adminweb/build
 ## build — Compile the madexchanger binary (with CGO for SQLite).
 ##         The admin-web SPA must be staged first (use 'make all').
 build: fmt vet
-	CGO_ENABLED=1 go build $(LDFLAGS) -o $(BINARY) ./cmd/madexchanger
+	CGO_ENABLED=1 go build -trimpath $(LDFLAGS) -o $(BINARY) ./cmd/madexchanger
 
 ## test — Run all tests with race detection and verbose output.
 test:
