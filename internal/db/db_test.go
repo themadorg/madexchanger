@@ -125,51 +125,51 @@ func TestEmptyStats(t *testing.T) {
 	}
 }
 
-func TestRoutingRulesCRUD(t *testing.T) {
+func TestRewriteRulesCRUD(t *testing.T) {
 	d := openTestDB(t)
 
-	rule := &RoutingRule{Enabled: true, Field: "mail_from", Pattern: "old@x.org", Replacement: "new@x.org", Comment: "test"}
-	if err := d.AddRoutingRule(rule); err != nil {
-		t.Fatalf("AddRoutingRule error: %v", err)
+	rule := &RewriteRule{Enabled: true, Field: "mail_from", Pattern: "old@x.org", Replacement: "new@x.org", Comment: "test"}
+	if err := d.AddRewriteRule(rule); err != nil {
+		t.Fatalf("AddRewriteRule error: %v", err)
 	}
 	if rule.ID == 0 {
 		t.Fatal("rule.ID should be non-zero after insert")
 	}
 
-	rules, _ := d.ListRoutingRules()
+	rules, _ := d.ListRewriteRules()
 	if len(rules) != 1 {
 		t.Fatalf("len(rules) = %d, want 1", len(rules))
 	}
 
 	rule.Enabled = false
 	rule.Comment = "updated"
-	_ = d.UpdateRoutingRule(rule)
+	_ = d.UpdateRewriteRule(rule)
 
-	_ = d.DeleteRoutingRule(rule.ID)
-	rules, _ = d.ListRoutingRules()
+	_ = d.DeleteRewriteRule(rule.ID)
+	rules, _ = d.ListRewriteRules()
 	if len(rules) != 0 {
 		t.Errorf("len(rules) after delete = %d, want 0", len(rules))
 	}
 }
 
-func TestAllowRulesCRUD(t *testing.T) {
+func TestRelayFiltersCRUD(t *testing.T) {
 	d := openTestDB(t)
 
-	filter := &AllowRule{Enabled: true, Field: "domain", Pattern: "example.org", Comment: "test"}
-	if err := d.AddIncomingRule(filter); err != nil {
-		t.Fatalf("AddIncomingRule error: %v", err)
+	filter := &RelayFilter{Enabled: true, Field: "domain", Pattern: "example.org", Comment: "test"}
+	if err := d.AddRelayFilter(filter); err != nil {
+		t.Fatalf("AddRelayFilter error: %v", err)
 	}
 	if filter.ID == 0 {
 		t.Fatal("filter.ID should be non-zero after insert")
 	}
 
-	filters, _ := d.ListAllowRules()
+	filters, _ := d.ListRelayFilters()
 	if len(filters) != 1 {
 		t.Fatalf("len(filters) = %d, want 1", len(filters))
 	}
 
-	_ = d.DeleteAllowRule(filter.ID)
-	filters, _ = d.ListAllowRules()
+	_ = d.DeleteRelayFilter(filter.ID)
+	filters, _ = d.ListRelayFilters()
 	if len(filters) != 0 {
 		t.Errorf("len(filters) after delete = %d, want 0", len(filters))
 	}

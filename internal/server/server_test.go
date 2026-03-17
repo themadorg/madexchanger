@@ -49,7 +49,7 @@ func newTestServer(t *testing.T) (*Server, *httptest.Server) {
 		SkipTLSVerify:  true,
 		MaxBodySize:    1024 * 1024, // 1 MiB for tests.
 		LogLevel:       "error",
-		IncomingMode:   "all",
+		RelayMode:      "all",
 	}
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -188,8 +188,8 @@ func TestHandleHealth(t *testing.T) {
 	if !strings.Contains(body, `"status":"ok"`) {
 		t.Errorf("health body = %q, want JSON with status:ok", body)
 	}
-	if !strings.Contains(body, `"incoming_mode":"all"`) {
-		t.Errorf("health body should contain incoming_mode")
+	if !strings.Contains(body, `"relay_mode":"all"`) {
+		t.Errorf("health body should contain relay_mode")
 	}
 }
 
@@ -208,7 +208,7 @@ func TestHandleReceiveDownstreamFailure(t *testing.T) {
 		SkipTLSVerify:  true,
 		MaxBodySize:    1024 * 1024,
 		LogLevel:       "error",
-		IncomingMode:   "all",
+		RelayMode:      "all",
 	}
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -250,7 +250,7 @@ func TestRelaySelectedModeReject(t *testing.T) {
 	defer downstream.Close()
 
 	// Switch to "reject" mode with no filters = reject all.
-	srv.cfg.IncomingMode = "reject"
+	srv.cfg.RelayMode = "selected"
 
 	body := "From: alice@example.org\r\nTo: bob@example.org\r\n\r\nHello!"
 	req := httptest.NewRequest(http.MethodPost, "/mxdeliv", strings.NewReader(body))
@@ -270,8 +270,8 @@ func TestRelaySelectedModeAllow(t *testing.T) {
 	defer downstream.Close()
 
 	// Switch to "reject" mode and add a matching filter.
-	srv.cfg.IncomingMode = "reject"
-	_ = srv.store.AddIncomingRule(&db.AllowRule{
+	srv.cfg.RelayMode = "selected"
+	_ = srv.store.AddRelayFilter(&db.RelayFilter{
 		Enabled: true,
 		Field:   "domain",
 		Pattern: "example.org",
