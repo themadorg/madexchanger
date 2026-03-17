@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/themadorg/madexchanger/compare/v1.2.0...v1.2.1) (2026-03-17)
+
+
+### Bug Fixes
+
+* add -trimpath and remove duplicate code blocks ([768b8f0](https://github.com/themadorg/madexchanger/commit/768b8f00fe7f8e5fc9f60d24bd850db321ff95b6))
+
 # [1.2.0](https://github.com/themadorg/madexchanger/compare/v1.1.1...v1.2.0) (2026-03-12)
 
 
