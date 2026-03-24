@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/themadorg/madexchanger/compare/v1.2.1...v1.2.2) (2026-03-24)
+
+
+### Bug Fixes
+
+* **tests:** align test types with production code ([6533c81](https://github.com/themadorg/madexchanger/commit/6533c81ca8ae551c1b4c2f5956f4293864b5de49))
+
 ## [1.2.1](https://github.com/themadorg/madexchanger/compare/v1.2.0...v1.2.1) (2026-03-17)
 
 
