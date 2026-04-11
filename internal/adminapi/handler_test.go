@@ -44,7 +44,7 @@ func setupHandler(t *testing.T) *Handler {
 	t.Cleanup(func() { _ = store.Close() })
 
 	cfg := &config.Config{
-		RelayMode:  "all",
+		RelayMode:     "all",
 		DownstreamURL: "https://10.0.0.5",
 		ReceivePath:   "/mxdeliv",
 		SkipTLSVerify: true,
