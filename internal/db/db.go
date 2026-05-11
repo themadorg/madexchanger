@@ -30,7 +30,10 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	// modernc.org/sqlite is the pure-Go SQLite driver (registered as the
+	// database/sql driver name "sqlite"). madexchanger no longer depends on
+	// mattn/go-sqlite3: the whole madmail tree builds with CGO_ENABLED=0.
+	_ "modernc.org/sqlite"
 )
 
 // DB wraps the SQLite database with typed access methods for
@@ -106,7 +109,9 @@ type Stats struct {
 // Open creates or opens the SQLite database at the given path
 // and initializes all required tables.
 func Open(path string) (*DB, error) {
-	sqlDB, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_busy_timeout=5000")
+	// modernc uses URL-style `_pragma=NAME(VALUE)` parameters (mattn's
+	// `_journal_mode=WAL&_busy_timeout=5000` keys are not understood).
+	sqlDB, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("db: failed to open %s: %w", path, err)
 	}
