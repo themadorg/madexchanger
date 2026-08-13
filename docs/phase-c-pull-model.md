@@ -1,24 +1,9 @@
-# Phase C — Pull model
+# Phase C — Pull queue
 
-## Behaviour
-1. **Always-pull domains** (`pull.domains`): message is stored immediately; no push attempt.
-2. **On failure** (`pull.on_failure: true`): if push HTTPS/HTTP fails, store for later pull.
-3. Destination agent: `GET /pull?domain=X` with `Authorization: Bearer <token>`, then `POST /pull/ack` with `{"ids":[…]}`.
+See [GUIDE.md](GUIDE.md) §7 phase C.
 
-## Config
-```yaml
-pull:
-  enabled: true
-  on_failure: true
-  domains:
-    - "pull-test.invalid"
-  path: "/pull"
-  token: ""   # defaults to admin_web.token
-```
+## Goal
+Queue messages for domains that cannot be pushed; deliver via `GET /pull` + `POST /pull/ack`.
 
-## Lab tests
-| # | Test | Pass |
-|---|------|------|
-| C1 | POST to always-pull domain | 200, queued_pull++ |
-| C2 | GET /pull?domain=… | messages list |
-| C3 | POST /pull/ack | count decreases |
+## Lab status
+**PASS** — enqueue / list / ack / empty queue.
