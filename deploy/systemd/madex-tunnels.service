@@ -1,0 +1,13 @@
+[Unit]
+Description=Madexchanger reverse SSH tunnels
+After=network-online.target madexchanger.service
+Wants=madexchanger.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=MADEX_HOME=%h/madexchanger
+ExecStart=%h/madexchanger/deploy/scripts/keep-tunnels.sh
+
+[Install]
+WantedBy=default.target

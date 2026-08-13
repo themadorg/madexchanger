@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh madexchanger reverse tunnels every 2 minutes
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=120
+AccuracySec=30
+Unit=madex-tunnels.service
+
+[Install]
+WantedBy=timers.target
