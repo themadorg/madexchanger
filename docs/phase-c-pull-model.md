@@ -1,9 +1,23 @@
 # Phase C — Pull queue
 
-See [GUIDE.md](GUIDE.md) §7 phase C.
+Operator guide: [GUIDE.md](GUIDE.md) section 7 (Phase C).
 
 ## Goal
-Queue messages for domains that cannot be pushed; deliver via `GET /pull` + `POST /pull/ack`.
 
-## Lab status
-**PASS** — enqueue / list / ack / empty queue.
+Store messages when push is skipped or fails; deliver later via `GET /pull` and `POST /pull/ack`.
+
+## Config (summary)
+
+```yaml
+pull:
+  enabled: true
+  on_failure: true
+  domains:
+    - "pull-test.invalid"
+  path: "/pull"
+  token: "change-me-to-a-random-token"
+```
+
+## Lab
+
+PASS: enqueue → list (`count >= 1`) → ack → empty queue.

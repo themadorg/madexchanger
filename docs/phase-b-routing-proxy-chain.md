@@ -1,9 +1,11 @@
 # Phase B — Allowlist filters
 
-See [GUIDE.md](GUIDE.md) §7 phase B.
+Operator guide: [GUIDE.md](GUIDE.md) section 7 (Phase B).
 
 ## Goal
-`relay_mode=selected` + domain filters so only approved traffic is relayed.
 
-## Lab status
-**PASS** — 403 without filter, 200 with domain filter, restore `all`.
+Limit relay traffic with `relay_mode=selected` and domain (or address) filters.
+
+## Lab
+
+PASS: HTTP 403 with no filters; HTTP 200 after adding an allow filter; restore `relay_mode=all`.

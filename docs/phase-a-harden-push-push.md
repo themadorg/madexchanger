@@ -1,9 +1,11 @@
-# Phase A — Harden push–push
+# Phase A — Push–push relay
 
-See the full operator guide: [GUIDE.md](GUIDE.md) (Server1 / Server2 / ExchangerHost).
+Operator guide: [GUIDE.md](GUIDE.md).
 
 ## Goal
-Stable HTTP push–push relay between two Madmail hosts via Madexchanger and reverse tunnels.
 
-## Lab status
-**PASS** on three-host regression (health, isolation optional, bidirectional forward 200).
+Run Madexchanger as a stable HTTP push–push path between two Madmail hosts (Server1 and Server2), including reverse tunnels and Madmail `endpoint-cache`.
+
+## Lab
+
+PASS: health on all three roles, optional direct-path isolation, bidirectional relay HTTP 200 with successful forward logs.
