@@ -25,3 +25,9 @@
 
 ## Scripts
 - `deploy/scripts/admin-set-relay-mode.sh` (needs `MADEX_ADMIN_TOKEN`)
+
+## Lab result (delta/alireza/acer)
+
+- B3 `relay_mode=selected` with no filters → **HTTP 403** `Not allowed by relay filter`
+- Restored `relay_mode=all` after test
+- B1 dynamic push–push remains green (Phase A smoke)
