@@ -1,0 +1,14 @@
+[Unit]
+Description=Madexchanger push-push federation relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/madexchanger
+ExecStart=%h/madexchanger/madexchanger -config %h/madexchanger/config.yml
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
