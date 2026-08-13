@@ -1,0 +1,41 @@
+## Push–push madexchanger for dual Madmail (dynamic routing)
+## Listen on all interfaces so reverse-SSH remotes can target 127.0.0.1:19080
+## on each madmail host while the process runs on the exchanger machine.
+
+listen: "0.0.0.0:19080"
+receive_path: "/mxdeliv"
+
+tls:
+  cert_file: ""
+  key_file: ""
+
+## Empty = dynamic: POST https://<recipient-domain>/mxdeliv then HTTP
+downstream_url: ""
+
+forward_timeout: 60
+skip_tls_verify: true
+
+proxy:
+  url: ""
+
+max_body_size: 33554432
+
+## "all" for lab; use admin UI filters + "selected" for production allowlists
+relay_mode: "all"
+
+database_path: "madexchanger.db"
+log_level: "info"
+
+admin_web:
+  enabled: true
+  path: "/admin"
+  token: "change-me-to-a-random-token"
+
+## Phase C — pull queue
+pull:
+  enabled: true
+  on_failure: true
+  domains:
+    - "pull-test.invalid"
+  path: "/pull"
+  token: ""  # empty → admin_web.token

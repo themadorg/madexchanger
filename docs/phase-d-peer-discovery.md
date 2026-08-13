@@ -1,9 +1,16 @@
-# Phase D — Peer discovery / directory
+# Phase D — Peer discovery
 
-## Goals
-- Separate **message relay** from **peer discovery feeds**.
-- Document madmail admin “Exchangers” poll URLs vs madexchanger push–push.
-- Optional static directory JSON for lab peers.
+## Endpoint
+`GET /peers` → JSON list of known Madmail peers and this exchanger.
 
-## Status
-Scaffold only.
+Lab default peers: delta.sudoshz.ir, 172.104.234.13, madexchanger.
+
+## Test
+```bash
+curl -sS http://127.0.0.1:19080/peers
+```
+
+## Future
+- Load from `peers.yml` / remote directory URL
+- Auth + signed peer lists
+- Integration with madmail admin exchanger feeds (poll URLs)
