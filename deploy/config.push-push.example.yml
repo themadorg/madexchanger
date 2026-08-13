@@ -30,3 +30,12 @@ admin_web:
   enabled: true
   path: "/admin"
   token: "change-me-to-a-random-token"
+
+## Phase C — pull queue
+pull:
+  enabled: true
+  on_failure: true
+  domains:
+    - "pull-test.invalid"
+  path: "/pull"
+  token: ""  # empty → admin_web.token

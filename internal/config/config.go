@@ -139,6 +139,26 @@ type Config struct {
 
 	// AdminWeb configures the embedded admin dashboard.
 	AdminWeb AdminWebConfig `yaml:"admin_web"`
+
+	// Pull configures pull-based delivery: when push to a destination fails
+	// (or domain is listed in Domains), store the message so the destination
+	// can later GET /pull?domain=… and fetch it.
+	Pull PullConfig `yaml:"pull"`
+}
+
+// PullConfig controls the pull-queue feature (Phase C).
+type PullConfig struct {
+	// Enabled turns on pull queue storage and /pull HTTP handlers.
+	Enabled bool `yaml:"enabled"`
+	// OnFailure stores messages when forward (push) fails for a domain.
+	OnFailure bool `yaml:"on_failure"`
+	// Domains is a list of recipient domains that always use pull (skip push).
+	// Example: ["pull-test.invalid", "offline.example"]
+	Domains []string `yaml:"domains"`
+	// Path is the HTTP path for pull (default "/pull").
+	Path string `yaml:"path"`
+	// Token is Bearer auth for pull (defaults to admin_web.token if empty).
+	Token string `yaml:"token"`
 }
 
 // Load reads and parses a YAML configuration file, applies defaults
@@ -188,6 +208,12 @@ func (c *Config) applyDefaults() {
 	}
 	if c.AdminWeb.Path == "" {
 		c.AdminWeb.Path = "/admin"
+	}
+	if c.Pull.Path == "" {
+		c.Pull.Path = "/pull"
+	}
+	if c.Pull.Token == "" && c.AdminWeb.Token != "" {
+		c.Pull.Token = c.AdminWeb.Token
 	}
 }
 
