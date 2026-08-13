@@ -54,6 +54,8 @@ cp config.yml.example config.yml
 ./madexchanger -config config.yml
 ```
 
+**Full operator guide (install → all phases → tests):** [`docs/GUIDE.md`](docs/GUIDE.md)
+
 Push–push lab (reverse tunnels + dual Madmail): `docs/phase-a-harden-push-push.md`.
 
 
