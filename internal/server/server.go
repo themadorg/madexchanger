@@ -29,6 +29,7 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -62,6 +63,8 @@ type Server struct {
 	received  atomic.Int64
 	forwarded atomic.Int64
 	errors    atomic.Int64
+	pulled    atomic.Int64
+	queued    atomic.Int64
 }
 
 // New creates a new Server with the given configuration, forwarder,
@@ -94,6 +97,20 @@ func (s *Server) Run() error {
 
 	// Health check.
 	mux.HandleFunc("/health", s.handleHealth)
+
+	// Pull-based delivery (Phase C): destination polls for queued mail.
+	if s.cfg.Pull.Enabled {
+		path := s.cfg.Pull.Path
+		if path == "" {
+			path = "/pull"
+		}
+		mux.HandleFunc(path, s.handlePull)
+		mux.HandleFunc(path+"/ack", s.handlePullAck)
+		s.log.Info("pull handlers registered", "path", path, "on_failure", s.cfg.Pull.OnFailure)
+	}
+
+	// Peer discovery (Phase D).
+	mux.HandleFunc("/peers", s.handlePeers)
 
 	// Admin API — single RPC endpoint (matching Madmail's pattern).
 	if s.admin != nil {
@@ -239,49 +256,105 @@ func (s *Server) handleReceive(w http.ResponseWriter, r *http.Request) {
 	// Apply rewrite rules.
 	mailFrom, mailTo = s.applyRewrites(mailFrom, mailTo)
 
-	// Forward to destination(s). In dynamic mode, recipients are grouped
-	// by domain and each group gets its own forwarding request.
-	results := s.fwd.Forward(mailFrom, mailTo, body)
-
 	// Extract the source server from the remote address.
 	fromServer := remoteHost(r.RemoteAddr)
 
-	var hasError, hasSuccess bool
-	for _, res := range results {
-		if res.Err != nil {
-			hasError = true
-			s.log.Error("forwarding failed",
-				"err", res.Err, "domain", res.Domain, "target", res.TargetURL,
-				"from", mailFrom, "to", res.Recipients, "remote", r.RemoteAddr)
-			if s.store != nil {
-				_ = s.store.RecordError()
-			}
-			s.errors.Add(1)
+	// Split recipients: always-pull domains vs push domains.
+	var pushTo, pullTo []string
+	for _, rcpt := range mailTo {
+		dom := domainOf(rcpt)
+		if s.pullAlways(dom) {
+			pullTo = append(pullTo, rcpt)
 		} else {
-			hasSuccess = true
-			s.forwarded.Add(1)
-			if s.store != nil {
-				_ = s.store.RecordRelay(fromServer, res.Domain, int64(len(body)))
-			}
+			pushTo = append(pushTo, rcpt)
+		}
+	}
 
-			scheme := "http"
-			if r.TLS != nil {
-				scheme = "https"
+	var hasError, hasSuccess bool
+
+	// Queue always-pull domains without attempting push.
+	if len(pullTo) > 0 && s.cfg.Pull.Enabled && s.store != nil {
+		for _, rcpt := range pullTo {
+			dom := domainOf(rcpt)
+			if id, err := s.store.EnqueuePull(dom, mailFrom, rcpt, body); err != nil {
+				hasError = true
+				s.log.Error("pull enqueue failed", "err", err, "domain", dom)
+				s.errors.Add(1)
+			} else {
+				hasSuccess = true
+				s.queued.Add(1)
+				s.log.Info("email queued for pull", "id", id, "domain", dom, "to", rcpt, "size", len(body))
 			}
-			s.log.Info("email relayed",
-				"scheme", scheme, "from", mailFrom, "to", res.Recipients,
-				"domain", res.Domain, "target", res.TargetURL,
-				"size", len(body), "remote", r.RemoteAddr)
+		}
+	}
+
+	// Push remaining recipients.
+	if len(pushTo) > 0 {
+		results := s.fwd.Forward(mailFrom, pushTo, body)
+		for _, res := range results {
+			if res.Err != nil {
+				// On failure, optionally store for pull.
+				if s.cfg.Pull.Enabled && s.cfg.Pull.OnFailure && s.store != nil {
+					for _, rcpt := range res.Recipients {
+						if id, err := s.store.EnqueuePull(res.Domain, mailFrom, rcpt, body); err != nil {
+							hasError = true
+							s.log.Error("pull enqueue after push fail", "err", err, "domain", res.Domain)
+							s.errors.Add(1)
+						} else {
+							hasSuccess = true
+							s.queued.Add(1)
+							s.log.Info("email queued for pull after push fail",
+								"id", id, "domain", res.Domain, "err", res.Err)
+						}
+					}
+				} else {
+					hasError = true
+					s.log.Error("forwarding failed",
+						"err", res.Err, "domain", res.Domain, "target", res.TargetURL,
+						"from", mailFrom, "to", res.Recipients, "remote", r.RemoteAddr)
+					if s.store != nil {
+						_ = s.store.RecordError()
+					}
+					s.errors.Add(1)
+				}
+			} else {
+				hasSuccess = true
+				s.forwarded.Add(1)
+				if s.store != nil {
+					_ = s.store.RecordRelay(fromServer, res.Domain, int64(len(body)))
+				}
+				scheme := "http"
+				if r.TLS != nil {
+					scheme = "https"
+				}
+				s.log.Info("email relayed",
+					"scheme", scheme, "from", mailFrom, "to", res.Recipients,
+					"domain", res.Domain, "target", res.TargetURL,
+					"size", len(body), "remote", r.RemoteAddr)
+			}
 		}
 	}
 
 	if hasError && !hasSuccess {
-		// All domains failed.
 		http.Error(w, "Forwarding failed for all recipients", http.StatusBadGateway)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+// pullAlways reports whether domain is configured for always-pull (no push).
+func (s *Server) pullAlways(domain string) bool {
+	if !s.cfg.Pull.Enabled {
+		return false
+	}
+	dom := strings.Trim(strings.ToLower(domain), "[]")
+	for _, d := range s.cfg.Pull.Domains {
+		if strings.Trim(strings.ToLower(d), "[]") == dom {
+			return true
+		}
+	}
+	return false
 }
 
 // matchesFilter checks if the message matches any enabled relay filter.
@@ -392,9 +465,134 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var pending int64
+	if s.store != nil && s.cfg.Pull.Enabled {
+		pending, _ = s.store.CountPull("")
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	_, _ = fmt.Fprintf(w, `{"status":"ok","received":%d,"forwarded":%d,"errors":%d,"relay_mode":"%s"}`,
-		s.received.Load(), s.forwarded.Load(), s.errors.Load(), s.cfg.RelayMode)
+	_, _ = fmt.Fprintf(w,
+		`{"status":"ok","received":%d,"forwarded":%d,"errors":%d,"queued_pull":%d,"pulled":%d,"relay_mode":"%s","pull_enabled":%v}`,
+		s.received.Load(), s.forwarded.Load(), s.errors.Load(),
+		pending, s.pulled.Load(), s.cfg.RelayMode, s.cfg.Pull.Enabled)
+}
+
+// handlePull lists queued messages for a domain (Bearer token required).
+// GET /pull?domain=delta.sudoshz.ir
+func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.authorizePull(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	domain := strings.TrimSpace(r.URL.Query().Get("domain"))
+	if domain == "" {
+		http.Error(w, "domain query parameter required", http.StatusBadRequest)
+		return
+	}
+	if s.store == nil {
+		http.Error(w, "store unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	msgs, err := s.store.ListPullByDomain(domain, 50)
+	if err != nil {
+		s.log.Error("pull list failed", "err", err, "domain", domain)
+		http.Error(w, "pull list failed", http.StatusInternalServerError)
+		return
+	}
+	if msgs == nil {
+		msgs = []db.PullMessage{}
+	}
+	// Encode body as base64-friendly: return raw body as base64 in JSON via string
+	type pullItem struct {
+		ID       int64  `json:"id"`
+		Domain   string `json:"domain"`
+		MailFrom string `json:"mail_from"`
+		MailTo   string `json:"mail_to"`
+		Body     string `json:"body"` // raw RFC822 string
+		Created  string `json:"created_at"`
+	}
+	out := make([]pullItem, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, pullItem{
+			ID: m.ID, Domain: m.Domain, MailFrom: m.MailFrom, MailTo: m.MailTo,
+			Body: string(m.Body), Created: m.CreatedAt,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"domain":   domain,
+		"count":    len(out),
+		"messages": out,
+	})
+	s.log.Info("pull listed", "domain", domain, "count", len(out))
+}
+
+// handlePullAck deletes pulled message IDs after the client delivered them.
+// POST /pull/ack  {"ids":[1,2,3]}
+func (s *Server) handlePullAck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.authorizePull(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var body struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if s.store == nil {
+		http.Error(w, "store unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if err := s.store.DeletePull(body.IDs); err != nil {
+		http.Error(w, "ack failed", http.StatusInternalServerError)
+		return
+	}
+	s.pulled.Add(int64(len(body.IDs)))
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = fmt.Fprintf(w, `{"status":"ok","acked":%d}`, len(body.IDs))
+	s.log.Info("pull acked", "count", len(body.IDs))
+}
+
+func (s *Server) authorizePull(r *http.Request) bool {
+	tok := s.cfg.Pull.Token
+	if tok == "" {
+		tok = s.cfg.AdminWeb.Token
+	}
+	if tok == "" {
+		return false
+	}
+	h := r.Header.Get("Authorization")
+	return h == "Bearer "+tok
+}
+
+// handlePeers returns a static peer directory for discovery (Phase D).
+// GET /peers — optional Bearer (admin token) when peers_require_auth is set later.
+func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	// Built-in lab peers; can be replaced by config file in future.
+	peers := []map[string]string{
+		{"id": "delta", "domain": "delta.sudoshz.ir", "mxdeliv": "https://delta.sudoshz.ir/mxdeliv", "note": "internal madmail"},
+		{"id": "alireza", "domain": "172.104.234.13", "mxdeliv": "https://172.104.234.13/mxdeliv", "note": "external IP madmail"},
+		{"id": "exchanger", "domain": "madexchanger", "mxdeliv": "http://127.0.0.1:19080/mxdeliv", "note": "this relay"},
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"version": 1,
+		"peers":   peers,
+	})
 }
 
 // --- Admin Web SPA (embedded, matching Madmail's pattern) ---

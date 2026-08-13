@@ -196,6 +196,16 @@ func (d *DB) migrate() error {
 		comment     TEXT NOT NULL DEFAULT '',
 		FOREIGN KEY (proxy_id) REFERENCES proxies(id) ON DELETE CASCADE
 	);
+
+	CREATE TABLE IF NOT EXISTS pull_queue (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		domain     TEXT NOT NULL DEFAULT '',
+		mail_from  TEXT NOT NULL DEFAULT '',
+		mail_to    TEXT NOT NULL DEFAULT '',
+		body       BLOB NOT NULL,
+		created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+	);
+	CREATE INDEX IF NOT EXISTS idx_pull_queue_domain ON pull_queue(domain);
 	`
 	_, err := d.db.Exec(schema)
 	if err != nil {
@@ -602,4 +612,84 @@ func (d *DB) ResolveProxy(destination string) (*Proxy, error) {
 	}
 	p.Enabled = enabled != 0
 	return &p, nil
+}
+
+
+// PullMessage is one queued item for pull-based delivery.
+type PullMessage struct {
+	ID        int64  `json:"id"`
+	Domain    string `json:"domain"`
+	MailFrom  string `json:"mail_from"`
+	MailTo    string `json:"mail_to"`
+	Body      []byte `json:"body"`
+	CreatedAt string `json:"created_at"`
+}
+
+// EnqueuePull stores a message for a destination domain to be pulled later.
+func (d *DB) EnqueuePull(domain, mailFrom, mailTo string, body []byte) (int64, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	res, err := d.db.Exec(
+		`INSERT INTO pull_queue (domain, mail_from, mail_to, body) VALUES (?, ?, ?, ?)`,
+		domain, mailFrom, mailTo, body,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// ListPullByDomain returns up to limit pending messages for domain (oldest first).
+func (d *DB) ListPullByDomain(domain string, limit int) ([]PullMessage, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := d.db.Query(
+		`SELECT id, domain, mail_from, mail_to, body, created_at FROM pull_queue WHERE domain = ? ORDER BY id ASC LIMIT ?`,
+		domain, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PullMessage
+	for rows.Next() {
+		var m PullMessage
+		if err := rows.Scan(&m.ID, &m.Domain, &m.MailFrom, &m.MailTo, &m.Body, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// DeletePull removes pulled messages by id.
+func (d *DB) DeletePull(ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, id := range ids {
+		if _, err := d.db.Exec(`DELETE FROM pull_queue WHERE id = ?`, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// CountPull returns number of pending pull messages (all domains or one).
+func (d *DB) CountPull(domain string) (int64, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	var n int64
+	var err error
+	if domain == "" {
+		err = d.db.QueryRow(`SELECT COUNT(*) FROM pull_queue`).Scan(&n)
+	} else {
+		err = d.db.QueryRow(`SELECT COUNT(*) FROM pull_queue WHERE domain = ?`, domain).Scan(&n)
+	}
+	return n, err
 }
