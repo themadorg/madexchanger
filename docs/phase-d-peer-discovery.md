@@ -1,9 +1,11 @@
 # Phase D — Peer discovery
 
-See [GUIDE.md](GUIDE.md) §7 phase D.
+Operator guide: [GUIDE.md](GUIDE.md) section 7 (Phase D).
 
 ## Goal
-`GET /peers` returns a neutral peer directory (server1, server2, exchanger).
 
-## Lab status
-**PASS**.
+Expose a static peer directory at `GET /peers` for operators and tooling.
+
+## Lab
+
+PASS: JSON with `version` and peers `server1`, `server2`, `exchanger`.

@@ -1,75 +1,89 @@
-# راهنمای جامع Madexchanger — از معرفی تا اجرا و تست
+# Madexchanger operator guide
 
-این سند **منبع اصلی** برای فهم، نصب، پیکربندی و تست رلهٔ فدراسیون بین دو (یا چند) سرور Madmail از طریق Madexchanger است.
+How to deploy and test Madexchanger as an HTTP federation relay between Madmail (chatmail) servers.
 
-در تمام مثال‌ها از نام‌های خنثی استفاده می‌شود:
+## Naming in this document
 
-| نام | نقش |
-|-----|-----|
-| **Server1** | سرور Madmail اول (مثلاً chatmail با دامنهٔ DNS) |
-| **Server2** | سرور Madmail دوم (مثلاً chatmail با IP عمومی) |
-| **ExchangerHost** | میزبان اجرای Madexchanger (می‌تواند لپ‌تاپ یا VPS باشد) |
-| **TunnelPort** | پورت محلی اکسچنجر روی localhost سرورها (پیش‌فرض `19080`) |
+| Name | Role |
+|------|------|
+| **Server1** | First Madmail instance (typically a DNS domain) |
+| **Server2** | Second Madmail instance (DNS domain or public IP) |
+| **ExchangerHost** | Machine that runs Madexchanger |
+| **TunnelPort** | Local port exposed on each Madmail host via reverse SSH (default `19080`) |
 
-هیچ نام واقعی دیتاسنتر/اپراتور در مثال‌ها نیست.
+Examples use placeholder domains and RFC 5737 addresses only.
 
 ---
 
-## ۱. معرفی
+## 1. What Madexchanger does
 
-### ۱.۱ Madexchanger چیست؟
-
-**Madexchanger** یک **رلهٔ HTTP** برای پیام‌های سازگار با Madmail / chatmail است.
-
-- پروتکل: همان `POST /mxdeliv` با هدرهای `X-Mail-From` / `X-Mail-To` و بدنهٔ RFC 822
-- نقش: مثل روتر شبکه — پیام را می‌گیرد، مقصد را از دامنهٔ گیرنده می‌فهمد، و به `/mxdeliv` مقصد forward می‌کند
-
-### ۱.۲ چرا به رله نیاز است؟
-
-| سناریو | بدون اکسچنجر | با اکسچنجر |
-|--------|----------------|------------|
-| دو سرور مستقیم به هم می‌رسند | فدراسیون مستقیم HTTP/SMTP | اختیاری |
-| یکی یا هر دو پشت NAT/فایروال | fail | مسیر از واسط |
-| تست isolation (مسیر مستقیم عمداً بسته) | fail | فقط مسیر رله |
-| یکی از دو طرف فقط inbound دارد | پیچیده | Pull (فاز C) |
-
-### ۱.۳ مدل‌های تحویل
+Madexchanger is an HTTP mail relay for the Madmail / chatmail wire format:
 
 ```
-[Push–Push — پیش‌فرض و فاز A]
-  Server1 ──POST /mxdeliv──► Exchanger ──POST /mxdeliv──► Server2
+POST /mxdeliv
+X-Mail-From: sender@domain
+X-Mail-To: recipient@domain
+Content-Type: application/octet-stream
 
-[فدراسیون مستقیم — بدون این پروژه]
-  Server1 ──POST /mxdeliv یا SMTP──► Server2
-
-[Pull — فاز C]
-  Server1 ──POST /mxdeliv──► Exchanger (صف)
-  Server2 ──GET /pull?domain=…──► Exchanger  (می‌گیرد و ack می‌کند)
+<RFC 822 message>
 ```
 
-| مدل | کی شروع می‌کند؟ | وضعیت در این repo |
-|-----|------------------|-------------------|
-| Push–Push | فرستنده هل می‌دهد | **پیاده و تست‌شده** |
-| Allowlist (فیلتر) | اپراتور قوانین می‌گذارد | **پیاده و تست‌شده** |
-| Pull (صف) | گیرنده/agent می‌کشد | **پیاده و تست‌شده** |
-| Discovery (`/peers`) | کلاینت لیست peer می‌گیرد | **پیاده و تست‌شده** |
+It accepts that request from an upstream Madmail server, decides the next hop from the recipient domain (or a fixed downstream URL), and posts the same envelope to the destination Madmail server.
+
+### When you need a relay
+
+| Situation | Direct federation | Via Madexchanger |
+|-----------|-------------------|------------------|
+| Both servers can reach each other | Works | Optional |
+| NAT, firewall, or split routing blocks direct path | Fails | Works if ExchangerHost can reach both sides |
+| Intentional isolation (block peer IPs for testing) | Fails | Works if traffic is forced through the relay |
+| Destination cannot accept inbound push | Hard | Use pull queue (Phase C) |
+
+### Delivery models
+
+**Push–push (default, Phase A)**
+
+```
+Server1 ──POST /mxdeliv──► Exchanger ──POST /mxdeliv──► Server2
+```
+
+**Direct federation (Madmail only, no exchanger)**
+
+```
+Server1 ──POST /mxdeliv or SMTP──► Server2
+```
+
+**Pull (Phase C)**
+
+```
+Server1 ──POST /mxdeliv──► Exchanger (store)
+Server2 ──GET /pull?domain=…──► Exchanger
+Server2 ──POST /pull/ack──► Exchanger
+```
+
+| Model | Initiator | Status in this tree |
+|-------|-----------|---------------------|
+| Push–push | Upstream Madmail | Implemented and lab-tested |
+| Allowlist filters | Operator config | Implemented and lab-tested |
+| Pull queue | Downstream client / agent | Implemented and lab-tested |
+| Peer list (`GET /peers`) | Operator / tooling | Implemented and lab-tested |
 
 ---
 
-## ۲. فازها (A → D)
+## 2. Phases
 
-| فاز | هدف | تست کلیدی |
-|-----|-----|-----------|
-| **A** | رله push–push پایدار + تونل + endpoint-cache | health، isolation، forward دو طرفه |
-| **B** | فقط ترافیک مجاز (`relay_mode=selected` + فیلتر) | 403 بدون فیلتر، 200 با فیلتر |
-| **C** | صف pull وقتی push ممکن/مطلوب نیست | queue → list → ack |
-| **D** | دایرکتوری peerها | `GET /peers` |
+| Phase | Purpose | Pass criteria |
+|-------|---------|---------------|
+| **A** | Reliable push–push path, tunnels, Madmail `endpoint-cache` | Health on all hosts; bidirectional relay HTTP 200 |
+| **B** | Restrict who may use the relay (`relay_mode` + filters) | 403 without filter; 200 with allow rule; restore `all` |
+| **C** | Queue mail for later pull | Enqueue → list → ack → empty queue |
+| **D** | Static peer directory | `GET /peers` returns a valid list |
 
-جزئیات فنی هر فاز: `docs/phase-*.md` و `docs/PHASES.md`.
+Branch that contains the full stack: **`phase-c/pull-model`**.
 
 ---
 
-## ۳. معماری مرجع آزمایشگاه
+## 3. Reference topology
 
 ```
                     ┌─────────────────────┐
@@ -85,66 +99,69 @@
         │  Madmail    │               │   Madmail    │
         │  domain1    │               │   domain2    │
         └─────────────┘               └──────────────┘
-
-اختیاری: روی Server1 خروجی به IP عمومی Server2 را REJECT کنید
-         و برعکس — تا فقط مسیر اکسچنجر کار کند.
 ```
 
-- **Server1** با `endpoint-cache` برای `domain2` → `http://127.0.0.1:19080/mxdeliv`
-- **Server2** با `endpoint-cache` برای `domain2`/`[ip]` → همان URL
-- **ExchangerHost** به اینترنت/هر دو مقصد برای **خروجی** `/mxdeliv` دسترسی دارد
+Optional isolation: on Server1, reject outbound traffic to Server2’s public IP (and the reverse on Server2) so only the exchanger path remains.
+
+Requirements:
+
+- Each Madmail host rewrites outbound federation for the peer domain to `http://127.0.0.1:19080/mxdeliv`.
+- ExchangerHost can open outbound HTTPS/HTTP to both Madmail public endpoints for dynamic delivery.
+- Reverse SSH publishes the exchanger on `127.0.0.1:TunnelPort` on each Madmail host.
 
 ---
 
-## ۴. پیش‌نیازها
+## 4. Prerequisites
 
-### ExchangerHost
-- Linux، Docker یا Go 1.24+ برای build
-- SSH key به Server1 و Server2 (برای reverse tunnel)
-- پورت آزاد `19080` (یا هر `TunnelPort`)
+**ExchangerHost**
 
-### Server1 / Server2
-- Madmail در حال اجرا (ترجیحاً با پچ normalize IP اگر دامنهٔ IP دارید)
-- `madmail endpoint-cache` در دسترس
-- پورت‌های mail/HTTPS طبق نصب خودتان
+- Linux
+- Go 1.24+ (or a containerized Go toolchain) to build
+- SSH key access to Server1 and Server2
+- Free listen port (default `19080`)
 
-### توکن آزمایشگاه
-در مثال‌ها:
+**Server1 / Server2**
+
+- Running Madmail
+- Working `madmail endpoint-cache` CLI
+- Prefer a Madmail build that normalizes bare IP addresses (`user@1.2.3.4` vs `user@[1.2.3.4]`) if either side is IP-based
+
+**Secrets**
+
+Examples use:
 
 ```text
 ADMIN_TOKEN=change-me-to-a-random-token
 ```
 
-در production حتماً عوض شود.
+Replace in any real deployment.
 
 ---
 
-## ۵. نصب و اجرا — ExchangerHost
+## 5. Install Madexchanger on ExchangerHost
 
-### ۵.۱ کلون و build
+### 5.1 Clone and build
 
 ```bash
-git clone <your-fork-or-upstream>/madexchanger.git
+git clone <repository-url> madexchanger
 cd madexchanger
-git checkout phase-c/pull-model   # کامل‌ترین برنچ (A+B+C+D)
+git checkout phase-c/pull-model
 
-# Build
 CGO_ENABLED=0 go build -buildvcs=false -trimpath -o madexchanger ./cmd/madexchanger
 ```
 
-### ۵.۲ کانفیگ
+### 5.2 Configuration
 
 ```bash
 cp deploy/config.push-push.example.yml config.yml
-# ویرایش: token، listen، pull.domains در صورت نیاز
 ```
 
-نمونهٔ حداقل (dynamic routing + pull):
+Minimal example (dynamic routing + pull):
 
 ```yaml
 listen: "0.0.0.0:19080"
 receive_path: "/mxdeliv"
-downstream_url: ""          # خالی = dynamic
+downstream_url: ""
 forward_timeout: 60
 skip_tls_verify: true
 relay_mode: "all"
@@ -163,14 +180,16 @@ pull:
   token: "change-me-to-a-random-token"
 ```
 
-### ۵.۳ systemd (user)
+`downstream_url` empty means **dynamic** routing: for each recipient domain, try `https://<domain>/mxdeliv`, then `http://<domain>/mxdeliv`. Set `downstream_url` only when every message must go to one fixed next hop.
+
+### 5.3 systemd (user unit)
 
 ```bash
 mkdir -p ~/.config/systemd/user
 cp deploy/systemd/madexchanger.service ~/.config/systemd/user/
 cp deploy/systemd/madex-tunnels.service ~/.config/systemd/user/
 cp deploy/systemd/madex-tunnels.timer ~/.config/systemd/user/
-# در unitها مسیر %h/madexchanger را با مسیر واقعی یکی کنید
+# Adjust WorkingDirectory / ExecStart if the install path is not ~/madexchanger
 
 export XDG_RUNTIME_DIR=/run/user/$(id -u)
 systemctl --user daemon-reload
@@ -178,20 +197,21 @@ systemctl --user enable --now madexchanger.service
 systemctl --user enable --now madex-tunnels.timer
 ```
 
-Health:
+Check health:
 
 ```bash
 curl -sS http://127.0.0.1:19080/health
-# انتظار: "status":"ok" و در صورت فعال بودن pull: "pull_enabled":true
 ```
 
-### ۵.۴ Reverse SSH از ExchangerHost
+Expect `"status":"ok"`. With pull enabled, expect `"pull_enabled":true`.
 
-فایل `~/.ssh/config` روی ExchangerHost:
+### 5.4 Reverse SSH tunnels
+
+On ExchangerHost, `~/.ssh/config`:
 
 ```sshconfig
 Host server1-mx
-  HostName <IP-or-DNS-Server1>
+  HostName <Server1-address>
   User root
   IdentityFile ~/.ssh/id_ed25519_mx
   IdentitiesOnly yes
@@ -199,7 +219,7 @@ Host server1-mx
   ExitOnForwardFailure yes
 
 Host server2-mx
-  HostName <IP-or-DNS-Server2>
+  HostName <Server2-address>
   User root
   IdentityFile ~/.ssh/id_ed25519_mx
   IdentitiesOnly yes
@@ -207,14 +227,16 @@ Host server2-mx
   ExitOnForwardFailure yes
 ```
 
+Start tunnels:
+
 ```bash
 export MADEX_TUNNEL_HOSTS="server1:server1-mx server2:server2-mx"
 export MADEX_PORT=19080
+chmod +x deploy/scripts/keep-tunnels.sh
 ./deploy/scripts/keep-tunnels.sh
-# یا: MADEX_TUNNEL_HOSTS=... در unit تونل
 ```
 
-روی هر سرور Madmail:
+On each Madmail host:
 
 ```bash
 curl -sS http://127.0.0.1:19080/health
@@ -222,15 +244,17 @@ curl -sS http://127.0.0.1:19080/health
 
 ---
 
-## ۶. پیکربندی Madmail (Server1 / Server2)
+## 6. Configure Madmail
 
-### Server1 (دامنهٔ `domain1.example`)
+### Server1 (`domain1.example`)
 
 ```bash
 madmail endpoint-cache set domain2.example "http://127.0.0.1:19080/mxdeliv" "via madexchanger"
-# اگر Server2 فقط IP دارد:
+
+# If Server2 is address-literal only:
 madmail endpoint-cache set 203.0.113.50 "http://127.0.0.1:19080/mxdeliv"
 madmail endpoint-cache set "[203.0.113.50]" "http://127.0.0.1:19080/mxdeliv"
+
 madmail endpoint-cache list
 ```
 
@@ -241,53 +265,57 @@ madmail endpoint-cache set domain1.example "http://127.0.0.1:19080/mxdeliv" "via
 madmail endpoint-cache list
 ```
 
-**نکته:** برای `TARGET_HOST` ترجیحاً **URL کامل** (`http://127.0.0.1:19080/mxdeliv`) بگذارید.  
-اگر Madmail قدیمی دارید، پچ `host:port` و normalize IP را از پروژه madmail اعمال کنید.
+Prefer a **full URL** as `TARGET_HOST` (`http://127.0.0.1:19080/mxdeliv`). Older Madmail builds mishandled bare `host:port` as IPv6.
 
-### اختیاری — isolation (مسیر مستقیم بسته)
-
-روی Server1:
+Helper script on each Madmail host:
 
 ```bash
-iptables -I OUTPUT -d <PUBLIC_IP_SERVER2> -j REJECT --reject-with icmp-host-unreachable
+PEER_DOMAIN=domain2.example ./deploy/madmail-endpoint-cache.sh
 ```
 
-روی Server2:
+### Optional isolation
+
+Server1:
 
 ```bash
-iptables -I OUTPUT -d <PUBLIC_IP_SERVER1> -j REJECT --reject-with icmp-host-unreachable
+iptables -I OUTPUT -d <Server2-public-IP> -j REJECT --reject-with icmp-host-unreachable
 ```
 
-برداشتن: همان قوانین با `-D`.
+Server2:
+
+```bash
+iptables -I OUTPUT -d <Server1-public-IP> -j REJECT --reject-with icmp-host-unreachable
+```
+
+Remove with the same rules and `-D`.
 
 ---
 
-## ۷. راهنمای تست فازبه‌فاز
+## 7. Phase tests
 
-همهٔ دستورات زیر را بعد از بالا بودن سرویس و تونل اجرا کنید.  
-متغیرها:
+Run only after Madexchanger is up and tunnels answer on both Madmail hosts.
 
 ```bash
-export EXCHANGER=http://127.0.0.1:19080   # از ExchangerHost یا از تونل روی Server*
+export EXCHANGER=http://127.0.0.1:19080
 export TOKEN=change-me-to-a-random-token
 export DOMAIN1=domain1.example
-export DOMAIN2=domain2.example            # یا IP / [IP]
+export DOMAIN2=domain2.example
 export USER1=user1@domain1.example
 export USER2=user2@domain2.example
 ```
 
-### فاز A — Push–Push
+### Phase A — push–push
 
-| # | کار | معیار قبولی |
-|---|-----|-------------|
-| A1 | `curl $EXCHANGER/health` روی ExchangerHost | `"status":"ok"` |
-| A2 | همان از Server1 و Server2 روی `127.0.0.1:19080` | ok |
-| A3 | HTTPS مستقیم Server1→Server2 (اگر isolation) | fail / code 000 |
-| A4 | POST از Server1 به localhost exchanger با `X-Mail-To: $USER2` | HTTP **200** |
-| A5 | POST از Server2 با `X-Mail-To: $USER1` | HTTP **200** |
-| A6 | لاگ ExchangerHost: `email forwarded successfully` | دو طرف دیده شود |
+| ID | Action | Pass |
+|----|--------|------|
+| A1 | Health on ExchangerHost | `"status":"ok"` |
+| A2 | Health on Server1 and Server2 at `127.0.0.1:19080` | ok |
+| A3 | Direct HTTPS Server1→Server2 if isolation is on | failure / HTTP 000 |
+| A4 | POST `/mxdeliv` on Server1 tunnel toward `$USER2` | HTTP **200** |
+| A5 | POST `/mxdeliv` on Server2 tunnel toward `$USER1` | HTTP **200** |
+| A6 | ExchangerHost logs show successful forwards both ways | present |
 
-نمونهٔ POST (multipart encrypted ساختگی برای عبور از PGP gate):
+Sample POST body (synthetic multipart encrypted message for chatmail PGP checks):
 
 ```bash
 curl -sS -o /tmp/body -w "%{http_code}\n" -X POST http://127.0.0.1:19080/mxdeliv \
@@ -317,50 +345,51 @@ test
 EML
 ```
 
-اسکریپت آماده:
+Automated smoke (from a host that can SSH to all three machines):
 
 ```bash
-# از ماشینی که SSH به هر سه دارد:
 SERVER1_SSH=server1 SERVER2_SSH=server2 EXCHANGER_SSH=exchanger \
   ./deploy/scripts/e2e-push-push-smoke.sh
 ```
 
-*(اسکریپت را با env به hostهای SSH خودتان map کنید؛ پیش‌فرض‌های قدیمی را در env override کنید.)*
+### Phase B — allowlist
 
-### فاز B — Allowlist
-
-روی **ExchangerHost**:
+On ExchangerHost:
 
 ```bash
-# selected بدون فیلتر → 403
-curl -sS -X POST $EXCHANGER/api/admin -H 'Content-Type: application/json' \
+# selected, no filters → 403
+curl -sS -X POST "$EXCHANGER/api/admin" -H 'Content-Type: application/json' \
   -d "{\"method\":\"POST\",\"resource\":\"/admin/config\",\"headers\":{\"Authorization\":\"Bearer $TOKEN\"},\"body\":{\"relay_mode\":\"selected\"}}"
 
-curl -sS -o /dev/null -w "%{http_code}\n" -X POST $EXCHANGER/mxdeliv \
+curl -sS -o /dev/null -w "%{http_code}\n" -X POST "$EXCHANGER/mxdeliv" \
   -H "X-Mail-From: a@x" -H "X-Mail-To: u@$DOMAIN1" --data-binary 'x'
-# انتظار: 403
+# expect 403
 
-# افزودن فیلتر و تست 200
-curl -sS -X POST $EXCHANGER/api/admin -H 'Content-Type: application/json' \
+# allow domain, then successful POST
+curl -sS -X POST "$EXCHANGER/api/admin" -H 'Content-Type: application/json' \
   -d "{\"method\":\"POST\",\"resource\":\"/admin/filters\",\"headers\":{\"Authorization\":\"Bearer $TOKEN\"},\"body\":{\"enabled\":true,\"field\":\"domain\",\"pattern\":\"$DOMAIN1\",\"comment\":\"allow\"}}"
 
-# ... POST موفق به دامنه مجاز ...
-
-# cleanup
-curl -sS -X POST $EXCHANGER/api/admin -H 'Content-Type: application/json' \
+# restore
+curl -sS -X POST "$EXCHANGER/api/admin" -H 'Content-Type: application/json' \
   -d "{\"method\":\"POST\",\"resource\":\"/admin/config\",\"headers\":{\"Authorization\":\"Bearer $TOKEN\"},\"body\":{\"relay_mode\":\"all\"}}"
 ```
 
-اسکریپت: `MADEX_ADMIN_TOKEN=$TOKEN ./deploy/scripts/phase-b-filter-test.sh`
-
-### فاز C — Pull
+Script:
 
 ```bash
-# C1 — دامنه always-pull
-curl -sS -w "%{http_code}\n" -X POST $EXCHANGER/mxdeliv \
+MADEX_ADMIN_TOKEN=$TOKEN MADEX_BASE=$EXCHANGER \
+  FILTER_DOMAIN=$DOMAIN1 \
+  ./deploy/scripts/phase-b-filter-test.sh
+```
+
+### Phase C — pull queue
+
+```bash
+# C1 always-pull domain
+curl -sS -w "%{http_code}\n" -X POST "$EXCHANGER/mxdeliv" \
   -H "X-Mail-From: a@src.test" -H "X-Mail-To: u@pull-test.invalid" \
   --data-binary "Subject: pull-test\n\nbody\n"
-# 200 و health: queued_pull >= 1
+# expect 200; health shows queued_pull >= 1
 
 # C2
 curl -sS -H "Authorization: Bearer $TOKEN" \
@@ -372,73 +401,81 @@ curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   -d '{"ids":[1]}' "$EXCHANGER/pull/ack"
 ```
 
-اسکریپت: `MADEX_ADMIN_TOKEN=$TOKEN ./deploy/scripts/phase-c-pull-test.sh`
-
-### فاز D — Discovery
+Script:
 
 ```bash
-curl -sS $EXCHANGER/peers
-# JSON: version + peers[]
+MADEX_ADMIN_TOKEN=$TOKEN MADEX_BASE=$EXCHANGER \
+  ./deploy/scripts/phase-c-pull-test.sh
 ```
 
----
+### Phase D — peer list
 
-## ۸. API خلاصه
+```bash
+curl -sS "$EXCHANGER/peers"
+```
 
-| متد | مسیر | توضیح |
-|-----|------|--------|
-| POST | `/mxdeliv` | دریافت و رله (یا صف pull) |
-| GET | `/health` | وضعیت + شمارنده‌ها |
-| GET | `/pull?domain=` | لیست صف pull (Bearer) |
-| POST | `/pull/ack` | `{"ids":[…]}` حذف از صف |
-| GET | `/peers` | لیست peerهای آزمایشگاه |
-| POST | `/api/admin` | Admin RPC (config, filters, …) |
+Expect JSON with `version` and a non-empty `peers` array.
 
 ---
 
-## ۹. عیب‌یابی
+## 8. HTTP API
 
-| علامت | علت محتمل | کار |
-|-------|-----------|-----|
-| health روی Server* fail | تونل قطع | `keep-tunnels.sh` / SSH key |
-| forward 502 | ExchangerHost به مقصد نمی‌رسد | فایروال خروجی، DNS، TLS |
-| 200 از exchanger ولی mailbox خالی | silent-drop Madmail / PGP | پچ normalize IP؛ پیام encrypted |
-| endpoint-cache بی‌اثر | URL ناقص / باگ host:port | URL کامل `http://127.0.0.1:PORT/mxdeliv` |
-| 403 در selected | فیلتر نیست | فیلتر domain یا `relay_mode=all` |
-| pull 401 | توکن اشتباه | `Authorization: Bearer …` |
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/mxdeliv` | Accept relay traffic (or enqueue for pull) |
+| GET | `/health` | Process health and counters |
+| GET | `/pull?domain=` | List queued messages (Bearer token) |
+| POST | `/pull/ack` | Body `{"ids":[…]}`; remove after delivery |
+| GET | `/peers` | Static peer directory |
+| POST | `/api/admin` | Admin RPC (config, filters, rewrites, proxies) |
+
+Admin config updates use **POST** on resource `/admin/config` (not PUT).
 
 ---
 
-## ۱۰. چک‌لیست اطمینان از پاس بودن تست‌ها
+## 9. Troubleshooting
 
-قبل از اعلام «سبز»، همه باید برقرار باشند:
+| Symptom | Likely cause | Action |
+|---------|--------------|--------|
+| Health fails on Server1/Server2 | Tunnel down | Run `keep-tunnels.sh`; check SSH keys |
+| Relay returns 502 | ExchangerHost cannot reach destination | Outbound firewall, DNS, TLS |
+| Relay returns 200 but mailbox empty | Madmail silent drop / PGP policy | Use encrypted body; fix IP address normalize on Madmail |
+| `endpoint-cache` ignored | Bad target form | Use full URL `http://127.0.0.1:PORT/mxdeliv` |
+| 403 under `selected` | No matching filter | Add domain filter or set `relay_mode=all` |
+| Pull returns 401 | Wrong token | `Authorization: Bearer <token>` |
 
-- [ ] `madexchanger` روی ExchangerHost `active`
-- [ ] `/health` از ExchangerHost، Server1، Server2 یکسان `status=ok`
-- [ ] (اختیاری) مستقیم Server1↔Server2 fail
-- [ ] A4 و A5 هر دو HTTP 200 + لاگ `forwarded successfully` دو طرفه
-- [ ] B: 403 سپس 200 با فیلتر؛ در پایان `relay_mode=all`
-- [ ] C: queue → list count≥1 → ack → count=0
-- [ ] D: `/peers` حداقل دو peer برمی‌گرداند
-- [ ] بعد از تست‌های B، حالت سرویس `all` مانده و push–push هنوز کار می‌کند
+---
 
-### نتیجهٔ مرجع آزمایشگاه (اجرای کامل روی سه میزبان واقعی)
+## 10. Release checklist
 
-در آخرین اجرای یکپارچه روی میزبان‌های آزمایش:
+Do not call the lab green until all of the following hold:
 
-| فاز | نتیجه |
-|-----|--------|
-| A | PASS — health×3، isolation 000، forward دو طرفه 200 |
-| B | PASS — 403 / 200 / restore all |
+1. Madexchanger unit is active on ExchangerHost.
+2. `/health` is ok on ExchangerHost, Server1, and Server2 (via tunnel).
+3. Optional: direct Server1↔Server2 path fails under isolation rules.
+4. Phase A: both directions return HTTP 200; exchanger logs successful forwards.
+5. Phase B: 403 without filter, 200 with filter; `relay_mode` restored to `all`.
+6. Phase C: enqueue, list `count >= 1`, ack, then `count == 0`.
+7. Phase D: `/peers` returns at least two entries.
+8. After B and C, a Phase A-style POST still succeeds (no sticky `selected` mode).
+
+### Lab reference run
+
+Integrated run on three live hosts (operator lab):
+
+| Phase | Result |
+|-------|--------|
+| A | PASS — health ×3, isolation 000, bidirectional 200 |
+| B | PASS — 403 / 200 / restore `all` |
 | C | PASS — queue / list / ack |
-| D | PASS — peers list |
-| رگرسیون A بعد از C | PASS |
+| D | PASS — peer list |
+| A after C | PASS |
 
-اگر هر موردی fail شود، تا سبز شدن همان فاز جلو نروید.
+Stop at the first failure and fix that phase before continuing.
 
 ---
 
-## ۱۱. ساختار repo مربوط به deploy
+## 11. Repository layout
 
 ```text
 deploy/
@@ -455,7 +492,7 @@ deploy/
     madex-tunnels.service
     madex-tunnels.timer
 docs/
-  GUIDE.md          ← این فایل
+  GUIDE.md          ← this file
   PHASES.md
   phase-a-….md … phase-d-….md
   general.md
@@ -464,22 +501,22 @@ docs/
 
 ---
 
-## ۱۲. امنیت
+## 12. Security notes
 
-- توکن admin و pull را قوی بگذارید؛ در lab عمومی نگذارید.
-- در production: `relay_mode=selected` + فیلتر دامنه/فرستنده.
-- ExchangerHost کل envelope را می‌بیند (محتوا معمولاً PGP end-to-end است).
-- Reverse SSH را با کلید محدود و `AllowTcpForwarding` کنترل کنید.
-
----
-
-## ۱۳. گام‌های بعدی پیشنهادی
-
-1. Agent روی Server* که `/pull` را poll کند و به madmail محلی `/mxdeliv` بدهد  
-2. `peers.yml` به‌جای لیست hardcode  
-3. انتقال ExchangerHost از لپ‌تاپ به VPS پایدار  
-4. Push برنچ‌ها به fork خودتان (upstream themadorg فقط در صورت PR)
+- Use strong admin and pull tokens outside disposable labs.
+- Prefer `relay_mode=selected` plus explicit domain filters in production.
+- The exchanger sees envelope headers and the message blob; content is usually OpenPGP end-to-end encrypted.
+- Restrict reverse-SSH keys and remote forward permissions on Madmail hosts.
 
 ---
 
-*آخرین هم‌ترازسازی با برنچ `phase-c/pull-model` و تست end-to-end روی سه میزبان آزمایشگاهی.*
+## 13. Follow-on work
+
+1. Agent on Server1/Server2 that polls `/pull` and posts into local Madmail `/mxdeliv`.
+2. Load peer data from a config file instead of the built-in list.
+3. Run ExchangerHost on a stable VPS rather than a laptop when uptime matters.
+4. Open a pull request against upstream only after review on your own fork.
+
+---
+
+*Aligned with branch `phase-c/pull-model` and a full three-host lab regression.*
