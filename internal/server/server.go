@@ -582,10 +582,10 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	// Built-in lab peers; can be replaced by config file in future.
+	// Built-in example peers (neutral names). Override later via peers file if needed.
 	peers := []map[string]string{
-		{"id": "delta", "domain": "delta.sudoshz.ir", "mxdeliv": "https://delta.sudoshz.ir/mxdeliv", "note": "internal madmail"},
-		{"id": "alireza", "domain": "172.104.234.13", "mxdeliv": "https://172.104.234.13/mxdeliv", "note": "external IP madmail"},
+		{"id": "server1", "domain": "domain1.example", "mxdeliv": "https://domain1.example/mxdeliv", "note": "Madmail Server1"},
+		{"id": "server2", "domain": "203.0.113.50", "mxdeliv": "https://203.0.113.50/mxdeliv", "note": "Madmail Server2 (IP example)"},
 		{"id": "exchanger", "domain": "madexchanger", "mxdeliv": "http://127.0.0.1:19080/mxdeliv", "note": "this relay"},
 	}
 	w.Header().Set("Content-Type", "application/json")
