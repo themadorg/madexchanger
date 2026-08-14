@@ -46,13 +46,18 @@ Content-Type: application/octet-stream
 # Build
 make build
 
-# Copy and edit configuration
+# Copy and edit configuration (dynamic routing is the default)
 cp config.yml.example config.yml
-# Edit config.yml with your downstream server details
+# Or: cp deploy/config.push-push.example.yml config.yml
 
 # Run
 ./madexchanger -config config.yml
 ```
+
+**Full operator guide (install → all phases → tests):** [`docs/GUIDE.md`](docs/GUIDE.md)
+
+Push–push lab (reverse tunnels + dual Madmail): `docs/phase-a-harden-push-push.md`.
+
 
 ## Configuration
 
@@ -62,14 +67,18 @@ See [`config.yml.example`](config.yml.example) for a fully documented configurat
 |---------|---------|-------------|
 | `listen` | `0.0.0.0:8443` | Listen address and port |
 | `receive_path` | `/mxdeliv` | Inbound POST path |
-| `downstream_url` | *(required)* | Downstream server base URL |
-| `forward_path` | `/mxdeliv` | Path on downstream server |
+| `downstream_url` | *(empty = dynamic)* | Fixed next hop; empty routes by recipient domain |
 | `forward_timeout` | `30` | Request timeout (seconds) |
 | `skip_tls_verify` | `true` | Skip downstream TLS verification |
 | `max_body_size` | `33554432` | Max request body (32 MiB) |
+| `relay_mode` | `all` | `all` or `selected` (filter rules) |
 | `log_level` | `info` | Log level: debug/info/warn/error |
 | `tls.cert_file` | *(empty)* | TLS certificate for inbound HTTPS |
 | `tls.key_file` | *(empty)* | TLS private key for inbound HTTPS |
+
+**Routing:** by default Madexchanger is **push–push dynamic**: it POSTs to `https://<recipient-domain>/mxdeliv` (HTTP fallback). Use `downstream_url` only for a fixed next hop (chaining).
+
+**Deploy / multi-server lab:** see [`docs/PHASES.md`](docs/PHASES.md) and [`deploy/`](deploy/).
 
 ## Building
 
